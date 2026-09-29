@@ -91,6 +91,46 @@ selection. The controller collects tests before creating isolates, so its
 environment must already support that initial collection. Preparation runs
 before collection inside each worker, not before controller collection.
 
+## Coverage
+
+Throngtest includes two coverage agents, for `coverage run -m pytest` and
+`pytest --cov`. They are pristan plugins in the `throngtest.coverage` slot.
+Only agents whose coverage tool is active participate in a run. Coverage tools
+are optional dependencies; install the one you intend to use in the controller
+and in every isolate.
+
+```bash
+coverage run -m pytest --isolates=4
+coverage combine
+coverage report -m
+
+pytest --isolates=4 --cov=your_package
+```
+
+Each isolate saves its coverage database under a unique name. After its pytest
+process exits, throngtest runs another command in the same isolate, serializes
+the database into command output, and reconstructs it on the controller. Source
+paths inside copied projects are mapped back to the controller's project path.
+The transport requires no shared filesystem, including with throng backends
+that run on remote machines. With `pytest-cov`, the final report includes the
+transferred data automatically. With `coverage run`, combine the data before
+reporting, as shown above. A `COVERAGE_FILE` path shared with isolates is not
+required.
+
+Third-party agents can register a function returning a `CoverageAgent` subclass
+with `@coverage_agents.plugin(unique=True)` and expose that registration module
+through a `throngtest.coverage` entry point. Every active registered agent is
+started in each isolate and has its coverage data returned to the controller.
+An agent implements `active(config)`, `start_worker(marker, configuration,
+root)`, and `stop_worker()`. It can override `configuration(root)` to send
+JSON-safe settings, `pytest_arguments()` to adjust worker options, and
+`data_file()` to name its coverage database. `root` is the project root on
+the corresponding machine.
+
+Subprocesses created *inside* a test still need subprocess coverage support
+from the chosen coverage tool. On remote machines, its Python environment also
+needs the agent package installed.
+
 ## Distribution and execution
 
 The controller collects and selects tests using pytest. It partitions the
@@ -187,6 +227,9 @@ throng backends must provide stdout and a process return code. The selected
 interpreter must have throngtest, pytest, the project's dependencies, and
 required pytest plugins available by the end of preparation. Throngtest only
 installs packages when explicitly instructed through preparation commands.
+For a remote backend, set `--throngtest-python` to an interpreter available in
+the isolate, such as `python`; its default is the controller's absolute
+`sys.executable` path, which is usually absent on a remote machine.
 
 The controller replays pytest reports, preserving assertion explanations,
 captured output, skip/xfail/xpass results, setup/teardown failures, durations,
@@ -234,5 +277,6 @@ plugins, trace checks of their isolate APIs, complete/disjoint distribution,
 concurrency barriers, configuration precedence, preparation, native reports, cancellation,
 cleanup, and fault injection at the protocol/backend boundaries. The existing
 CI also checks statement and branch coverage across Python and OS versions.
-Subprocess coverage uses the startup hook configured in the CI workflow; tests
-keep coverage data outside temporary isolate directories so it survives cleanup.
+The CI workflow uses a startup hook to measure its own local subprocesses.
+Integration tests also verify that the coverage agents transfer data from
+temporary isolates, including when pytest-xdist runs inside them.
