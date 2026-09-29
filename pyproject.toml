@@ -61,6 +61,10 @@ parallel = true
 plugins = ["coverage_pyver_pragma"]
 source = ["throngtest"]
 
+[tool.coverage.paths]
+# Unit tests import the checkout; isolate subprocesses import the installed wheel.
+source = ["throngtest", "*/site-packages/throngtest"]
+
 [tool.pytest.ini_options]
 norecursedirs = ["build", "mutants"]
 
