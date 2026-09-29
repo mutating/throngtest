@@ -3,7 +3,7 @@ requires = ["setuptools==68.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "throngest"
+name = "throngtest"
 version = "0.0.1"
 authors = [
   { name="Evgeniy Blinov", email="zheni-b@yandex.ru" },
@@ -12,6 +12,7 @@ description = 'Distributed pytest execution in isolated environments'
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
+    'pytest>=8.3.5,<10',
     'throng>=0.0.3',
     'skelet>=0.0.21',
 ]
@@ -41,21 +42,24 @@ keywords = [
     'pytest',
 ]
 
+[project.entry-points.pytest11]
+throngtest = "throngtest.plugin"
+
 [tool.setuptools.package-data]
-"throngest" = ["py.typed"]
+"throngtest" = ["py.typed"]
 
 [tool.setuptools.packages.find]
-include = ["throngest*"]
+include = ["throngtest*"]
 
 [tool.mutmut]
-paths_to_mutate=["throngest"]
+paths_to_mutate=["throngtest"]
 
 [tool.coverage.run]
 branch = "${THRONG_COVERAGE_BRANCH-false}"
 omit = ["*tests*"]
 parallel = true
 plugins = ["coverage_pyver_pragma"]
-source = ["throngest"]
+source = ["throngtest"]
 
 [tool.pytest.ini_options]
 norecursedirs = ["build", "mutants"]
@@ -67,5 +71,5 @@ lint.isort.combine-as-imports = true
 format.quote-style = "single"
 
 [project.urls]
-'Source' = 'https://github.com/mutating/throngest'
-'Tracker' = 'https://github.com/mutating/throngest/issues'
+'Source' = 'https://github.com/mutating/pytest-throng'
+'Tracker' = 'https://github.com/mutating/pytest-throng/issues'
