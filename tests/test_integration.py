@@ -27,7 +27,8 @@ def test_real_isolates_execute_every_test_once(pytester: pytest.Pytester, backen
         def observe(cls):
             original = cls.run
             def traced(self, *args, **kwargs):
-                (Path({str(tmp_path)!r}) / ('dispatch-' + uuid4().hex)).write_text(cls.__name__)
+                if 'from throngtest.worker import main' in args[0]:
+                    (Path({str(tmp_path)!r}) / ('dispatch-' + uuid4().hex)).write_text(cls.__name__)
                 return original(self, *args, **kwargs)
             cls.run = traced
         observe(LocalIsolate)

@@ -58,7 +58,7 @@ def test_nested_workers_execute_only_their_shard(pytester: pytest.Pytester, back
     assert len(records) == 16
     assert len({record['pid'] for record in records}) == 4
     assert {record['shard'] for record in records} == {0, 1}
-    assert len(list(tmp_path.glob('dispatch-*'))) == 4  # One preparation and one pytest command per isolate.
+    assert len([path for path in tmp_path.glob('dispatch-*') if 'throngtest.coverage_transport import export' not in path.read_text()]) == 4  # One preparation and one pytest command per isolate.
     for shard in (0, 1):
         assert {record['worker'] for record in records if record['shard'] == shard} == {'gw0', 'gw1'}
     if backend == 'temporary_directory':

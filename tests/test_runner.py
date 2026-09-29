@@ -39,7 +39,7 @@ def test_relocate_paths(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize('stage', ['enter', 'run', 'exit'])
 def test_isolate_errors_are_reported_and_cleanup_attempted(stage: str) -> None:
-    """Wrap backend failures and attempt cleanup after successfully entering a scope.
+    """Name the failing backend phase and attempt cleanup after scope entry.
 
     The mocked context manager fails separately on entry, execution, and exit
     to check the cleanup obligations at each point in the isolate lifecycle.
@@ -51,10 +51,35 @@ def test_isolate_errors_are_reported_and_cleanup_attempted(stage: str) -> None:
     isolate = scope.__enter__.return_value
     target = {'enter': scope.__enter__, 'run': isolate.run, 'exit': scope.__exit__}[stage]
     target.side_effect = RuntimeError('backend problem')
-    with pytest.raises(WorkerError, match='could not execute isolate: backend problem'):
+    with pytest.raises(WorkerError) as caught:
         execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken())
+    phase = {'enter': 'acquiring isolate', 'run': 'running pytest worker', 'exit': 'releasing isolate'}[stage]
+    assert f'{phase} failed: RuntimeError: backend problem' in str(caught.value)
     if stage != 'enter':
         scope.__exit__.assert_called_once()
+
+
+def test_backend_error_preserves_underlying_connection_failure() -> None:
+    """Expose the socket error beneath a third-party isolate allocation failure.
+
+    Backend exceptions can wrap a lower-level transport exception. The runner
+    must show both causes and the allocation phase, even though pytest reports
+    only the final WorkerError message.
+    """
+    manager = Mock()
+    manager.scope.__enter__ = Mock()
+    manager.scope.__exit__ = Mock(return_value=False)
+    failure = RuntimeError('The connection was lost; commands are never replayed.')
+    failure.__cause__ = OSError('socket is already closed')
+    manager.scope.__enter__.side_effect = failure
+    settings = Settings(_sources=[])
+    settings.backend = 'fission'
+    with pytest.raises(WorkerError) as caught:
+        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken())
+    message = str(caught.value)
+    assert 'isolate 1 (backend=fission): acquiring isolate failed' in message
+    assert 'RuntimeError: The connection was lost; commands are never replayed.' in message
+    assert 'caused by OSError: socket is already closed' in message
 
 
 def test_exit_code_mismatch() -> None:

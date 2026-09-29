@@ -83,7 +83,7 @@ def test_prepared(index):
     assert len(traces) == 2
     expected_class = 'LocalIsolate' if backend == 'local' else 'TemporaryDirectoryIsolate'
     for trace in traces:
-        calls = [json.loads(line) for line in trace]
+        calls = [json.loads(line) for line in trace if 'throngtest.coverage_transport import export' not in line]
         assert len(calls) == 3
         assert [call[0] for call in calls] == [expected_class] * 3
         assert [call[1] for call in calls[:2]] == commands
