@@ -131,7 +131,8 @@ def main(value: str) -> None:
                 nodeid = cast(str, report['nodeid'])
                 report['nodeid'] = worker.names.get(nodeid, nodeid)
             worker.finished = [worker.names.get(nodeid, nodeid) for nodeid in worker.finished]
-            if status == pytest.ExitCode.INTERRUPTED and worker.config is not None and cast(int, worker.config.getoption('maxfail')) and any(report['outcome'] == 'failed' for report in worker.reports):
+            outcomes = [report['outcome'] for report in worker.reports]
+            if status == pytest.ExitCode.INTERRUPTED and worker.config is not None and cast(int, worker.config.getoption('maxfail')) and 'failed' in outcomes:
                 status = pytest.ExitCode.TESTS_FAILED
         response: Dict[str, object] = {
             'version': 1,
