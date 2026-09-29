@@ -257,17 +257,23 @@ def test_collection_mismatch(pytester: pytest.Pytester, backend: str, tmp_path: 
     assert 'THRONGTEST_' not in output
 
 
-def test_collection_diagnostic_for_absolute_parameter_path(pytester: pytest.Pytester) -> None:
+@pytest.mark.parametrize('backslash_separators', [False, True])
+def test_collection_diagnostic_for_absolute_parameter_path(pytester: pytest.Pytester, backslash_separators: bool) -> None:
     """Explain fingerprint mismatches caused solely by relocated absolute parameter paths.
 
     A parameter derives its ID from the current directory, so a temporary copy
     changes the identifier without changing the collection size. The diff must
-    expose both paths while omitting the encoded worker response.
+    expose both paths while omitting the encoded worker response. Pytest doubles
+    Windows backslashes in parameter IDs, so expectations use that same spelling.
+    Rewriting separators also exercises this behavior on non-Windows systems.
     """
-    pytester.makepyfile('''
+    path_expression = "str(Path.cwd() / 'missing-command')"
+    if backslash_separators:
+        path_expression += ".replace('/', chr(92))"
+    pytester.makepyfile(f'''
         from pathlib import Path
         import pytest
-        @pytest.mark.parametrize('value', [str(Path.cwd() / 'missing-command')])
+        @pytest.mark.parametrize('value', [{path_expression}])
         def test_item(value): raise AssertionError('test must not execute')
     ''')
     result = run(pytester, 'temporary_directory', '--throngtest-check-fingerprints')
@@ -277,6 +283,9 @@ def test_collection_diagnostic_for_absolute_parameter_path(pytester: pytest.Pyte
     assert output.index('Absolute paths in parameter IDs change') < output.index('controller: 1 selected tests')
     assert 'even if the tests are otherwise equivalent' in output
     expected = str(pytester.path.resolve() / 'missing-command')
+    if backslash_separators:
+        expected = expected.replace('/', '\\')
+    expected = expected.replace('\\', '\\\\')
     assert f'-test_collection_diagnostic_for_absolute_parameter_path.py::test_item[{expected}]' in output
     assert '+test_collection_diagnostic_for_absolute_parameter_path.py::test_item[' in output
     assert f'+test_collection_diagnostic_for_absolute_parameter_path.py::test_item[{expected}]' not in output
