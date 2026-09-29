@@ -71,5 +71,5 @@ lint.isort.combine-as-imports = true
 format.quote-style = "single"
 
 [project.urls]
-'Source' = 'https://github.com/mutating/pytest-throng'
-'Tracker' = 'https://github.com/mutating/pytest-throng/issues'
+'Source' = 'https://github.com/mutating/throngtest'
+'Tracker' = 'https://github.com/mutating/throngtest/issues'
