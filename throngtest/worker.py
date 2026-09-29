@@ -1,5 +1,6 @@
 """Runs inside an isolate; never creates further isolates."""
 
+import json
 import os
 import sys
 import warnings
@@ -12,6 +13,8 @@ import pytest
 from _pytest._io import TerminalWriter
 from _pytest.terminal import TerminalReporter
 
+from throngtest.coverage import coverage_agents
+from throngtest.coverage_transport import marker_path
 from throngtest.distribution import fingerprint, partition
 from throngtest.protocol import Request, decode, encode
 from throngtest.settings import WORKER
@@ -114,12 +117,27 @@ class Worker:
 
 def main(value: str) -> None:
     request = Request.unpack(value)
+    root = Path.cwd().resolve()
     os.chdir(request.directory)
+    agents = coverage_agents()
+    selected_names = request.coverage_agents or []
+    if selected_names:
+        marker_path(request.marker).touch()
+    for name in selected_names:
+        agents[name].start_worker(request.marker, (request.coverage_configurations or {}).get(name, {}), root)
+    if selected_names:
+        data_files: Dict[str, str] = {name: agents[name].data_file() for name in selected_names}
+        marker_path(request.marker).write_text(json.dumps(data_files))
     # Effective arguments already include ini addopts and PYTEST_ADDOPTS.
     os.environ.pop('PYTEST_ADDOPTS', None)
     with TemporaryDirectory(prefix='throngtest-pytest-') as basetemp:
         worker = Worker(request, basetemp)
-        status = pytest.main([*request.arguments, '-o', 'addopts='], plugins=[worker])
+        try:
+            agent_arguments = [argument for name in selected_names for argument in agents[name].pytest_arguments()]
+            status = pytest.main([*request.arguments, *agent_arguments, '-o', 'addopts='], plugins=[worker])
+        finally:
+            for name in selected_names:
+                agents[name].stop_worker()
         if status == pytest.ExitCode.NO_TESTS_COLLECTED and worker.assigned == []:
             status = pytest.ExitCode.OK
         if worker.parallel and worker.error and not worker.reports:

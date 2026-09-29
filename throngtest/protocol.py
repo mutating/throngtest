@@ -34,6 +34,9 @@ class Request:
     shard: int
     marker: str
     directory: str
+    coverage_agents: Optional[List[str]] = None
+    coverage_targets: Optional[Dict[str, str]] = None
+    coverage_configurations: Optional[Dict[str, Dict[str, object]]] = None
 
     def pack(self) -> str:
         return encode(cast(Dict[str, object], vars(self)))

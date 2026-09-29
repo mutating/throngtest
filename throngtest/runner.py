@@ -5,14 +5,17 @@ import shlex
 import warnings
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, cast
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple, cast
 from uuid import uuid4
 
 import pytest
 from cantok import SimpleToken
 from throng import AbstractManager, throng
 
+from throngtest.coverage import coverage_agents
+from throngtest.coverage_transport import receive
 from throngtest.distribution import collection_difference, fingerprint, partition
 from throngtest.protocol import Request, WorkerError, read_response
 from throngtest.settings import ARGUMENTS, Settings
@@ -39,12 +42,78 @@ def relocate(argument: str, root: Path, invocation: Path, directory: Path) -> st
     return prefix + separator + value
 
 
+def coverage_plan(config: pytest.Config, backend: str) -> Tuple[List[str], Optional[Dict[str, str]], Optional[Dict[str, Dict[str, object]]]]:
+    """Select every active coverage agent and its controller-side data file."""
+    agents = coverage_agents()
+    enabled = [name for name, agent in agents.items() if agent.active(config)]
+    if shared_local_coverage(backend):
+        # coverage.py already starts in each local child and writes to the
+        # explicit controller path. Other active agents still participate.
+        enabled = [name for name in enabled if name != 'python_coverage']
+    if not enabled:
+        return [], None, None
+    return enabled, {name: str(Path(agents[name].data_file()).absolute()) for name in enabled}, {name: agents[name].configuration(config.rootpath) for name in enabled}
+
+
+def shared_local_coverage(backend: str) -> bool:
+    """Detect coverage.py startup with an explicit same-machine data path."""
+    data_file = os.environ.get('COVERAGE_FILE')
+    return backend in ('local', 'temporary_directory') and bool(os.environ.get('COVERAGE_PROCESS_START')) and bool(data_file and Path(data_file).is_absolute())
+
+
+@contextmanager
+def isolate_coverage_environment(enabled: bool) -> Iterator[None]:
+    """Keep controller-only coverage paths out of potentially remote Python."""
+    names = ('COVERAGE_PROCESS_START', 'COV_CORE_SOURCE', 'COV_CORE_CONFIG', 'COV_CORE_DATAFILE', 'COV_CORE_BRANCH', 'COV_CORE_CONTEXT')
+    saved = {name: os.environ.pop(name) for name in names if enabled and name in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
+def worker_arguments(config: pytest.Config, root: Path, invocation: Path, directory: Path) -> List[str]:
+    """Preserve effective pytest options while relocating project paths."""
+    arguments: List[str] = []
+    preserve_value = False
+    for argument in config.stash[ARGUMENTS]:
+        if preserve_value:
+            arguments.append(argument)
+            preserve_value = False
+        else:
+            arguments.append(relocate(argument, root, invocation, root / directory))
+            preserve_value = argument == '--isolates' or (
+                argument.startswith('--throngtest-') and '=' not in argument and argument not in (
+                    '--throngtest-check-fingerprints', '--throngtest-no-check-fingerprints',
+                )
+            )
+    arguments.extend(['--rootdir', os.path.relpath(root, root / directory)])
+    return arguments
+
+
+def backend_error(error: Exception, stage: str, request: Request, settings: Settings, preparation_output: str) -> WorkerError:
+    """Keep backend phase and exception chain visible in pytest's final exit."""
+    detail = str(error)
+    if not isinstance(error, WorkerError):
+        detail = f'{type(error).__name__}: {error}'
+        cause = error.__cause__
+        while cause is not None:
+            detail += f'\ncaused by {type(cause).__name__}: {cause}'
+            cause = cause.__cause__
+    message = f'isolate {request.shard + 1} (backend={settings.backend}): {stage} failed: {detail}'
+    if preparation_output:
+        message += f'\npreparation output:\n{preparation_output}'
+    return WorkerError(message, exitcode=error.exitcode if isinstance(error, WorkerError) else 3)
+
+
 def execute(manager: AbstractManager, request: Request, settings: Settings, token: SimpleToken, nodeids: Sequence[str] = ()) -> Dict[str, object]:
     command = shlex.join([settings.python, '-c', 'from throngtest.worker import main; import sys; main(sys.argv[1])', request.pack()])
     preparation_output = ''
+    stage = 'acquiring isolate'
     try:
         with manager.scope as isolate:
             for index, instruction in enumerate(settings.preparation, 1):
+                stage = f'running preparation command {index}'
                 try:
                     prepared = isolate.run(instruction, token=token)
                 except Exception as error:
@@ -55,11 +124,21 @@ def execute(manager: AbstractManager, request: Request, settings: Settings, toke
                         f'isolate {request.shard + 1}: preparation command {index} failed '
                         f'with exit code {prepared.returncode}: {instruction}',
                     )
+            stage = 'running pytest worker'
             result = isolate.run(command, token=token)
+            if request.coverage_agents and result.returncode in (0, 1) and request.marker in [line[:len(request.marker)] for line in (result.stdout or '').splitlines()]:
+                stage = 'exporting coverage'
+                exported = isolate.run(shlex.join([settings.python, '-c', 'from throngtest.coverage_transport import export; import sys; export(sys.argv[1])', request.pack()]), token=token)
+                if exported.returncode != 0:
+                    raise WorkerError(f'isolate could not export coverage: {exported.stderr or exported.stdout}')
+                coverage_payload = read_response(exported.stdout or '', request.marker)
+            stage = 'releasing isolate'
     except Exception as error:  # Third-party plugins may raise their own exception types.
-        raise WorkerError(f'could not execute isolate: {error}\npreparation output:\n{preparation_output}') from error
+        raise backend_error(error, stage, request, settings, preparation_output) from error
     stdout = result.stdout or ''
     try:
+        if request.coverage_agents and result.returncode in (0, 1) and request.marker in [line[:len(request.marker)] for line in stdout.splitlines()]:
+            receive(coverage_payload, request.coverage_targets or {}, Path.cwd())
         response = read_response(stdout, request.marker)
         # The decoded protocol is represented by the diagnostic below; avoid
         # flooding errors with its base64 payload. Preserve unrelated output.
@@ -208,23 +287,11 @@ class Runner:
             directory = invocation.relative_to(root)
         except ValueError:
             directory = Path()
-        arguments = []
-        preserve_value = False
-        for argument in session.config.stash[ARGUMENTS]:
-            if preserve_value:
-                arguments.append(argument)
-                preserve_value = False
-            else:
-                arguments.append(relocate(argument, root, invocation, root / directory))
-                preserve_value = argument == '--isolates' or (
-                    argument.startswith('--throngtest-') and '=' not in argument and argument not in (
-                        '--throngtest-check-fingerprints', '--throngtest-no-check-fingerprints',
-                    )
-                )
-        arguments.extend(['--rootdir', os.path.relpath(root, root / directory)])
+        arguments = worker_arguments(session.config, root, invocation, directory)
         nodeids = [item.nodeid for item in session.items]
         shards = partition(nodeids, self.settings.workers, self.settings.distribution)
         collection_fingerprint = fingerprint(nodeids) if self.settings.check_fingerprints else None
+        enabled, targets, configurations = coverage_plan(session.config, self.settings.backend)
         completed = 0
         token = SimpleToken()
         previous = Path.cwd()
@@ -236,12 +303,13 @@ class Runner:
             if self.settings.backend not in managers:
                 raise pytest.UsageError(f'throngtest: unknown backend {self.settings.backend!r}; available: {", ".join(sorted(managers))}')
             manager = managers[self.settings.backend]
-            with ThreadPoolExecutor(max_workers=len(shards), thread_name_prefix='throngtest') as pool:
+            with isolate_coverage_environment(bool(enabled)), ThreadPoolExecutor(max_workers=len(shards), thread_name_prefix='throngtest') as pool:
                 try:
                     futures = {
                         pool.submit(execute, manager, Request(
                             arguments, collection_fingerprint, len(shards),
                             self.settings.distribution, index, f'THRONGTEST_{uuid4().hex}:', str(directory),
+                            enabled, targets, configurations,
                         ), self.settings, token, nodeids): shard
                         for index, shard in enumerate(shards)
                     }
