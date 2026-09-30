@@ -1,3 +1,5 @@
+![logo](https://raw.githubusercontent.com/mutating/throngtest/develop/docs/assets/logo_2.svg)
+
 # throngtest
 
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
