@@ -21,10 +21,12 @@ from throngtest.protocol import Request, WorkerError, read_response
 from throngtest.settings import ARGUMENTS, Settings
 from throngtest.xdist import NESTED
 
+VALUE_OPTIONS = frozenset(('--isolates', '--backend', '--distribution', '--python', '--exclude', '--preparation'))
+
 
 def relocate(argument: str, root: Path, invocation: Path, directory: Path) -> str:
     """Relocate project paths without interpreting pytest's other arguments."""
-    if not argument or argument.startswith(('--throngtest-', '--isolates=')) or (argument.startswith('-') and '=' not in argument):
+    if not argument or argument.partition('=')[0] in VALUE_OPTIONS or (argument.startswith('-') and '=' not in argument):
         return argument
     prefix, separator, value = argument.partition('=') if argument.startswith('-') else ('', '', argument)
     path, *selectors = value.split('::')
@@ -82,11 +84,7 @@ def worker_arguments(config: pytest.Config, root: Path, invocation: Path, direct
             preserve_value = False
         else:
             arguments.append(relocate(argument, root, invocation, root / directory))
-            preserve_value = argument == '--isolates' or (
-                argument.startswith('--throngtest-') and '=' not in argument and argument not in (
-                    '--throngtest-check-fingerprints', '--throngtest-no-check-fingerprints',
-                )
-            )
+            preserve_value = argument in VALUE_OPTIONS
     arguments.extend(['--rootdir', os.path.relpath(root, root / directory)])
     return arguments
 
