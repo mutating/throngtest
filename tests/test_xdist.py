@@ -50,8 +50,8 @@ def test_nested_workers_execute_only_their_shard(pytester: pytest.Pytester, back
     pytester.makepyfile(**{f'test_{index}': source for index in range(4)})
     preparation = shlex.join([sys.executable, '-c', "from pathlib import Path; Path('prepared').write_text('ready')"])
     result = pytester.runpytest_subprocess(
-        '--isolates=2', '-n', '2', f'--dist={mode}', '--throngtest-distribution=files', f'--throngtest-backend={backend}',
-        '--throngtest-preparation=' + json.dumps([preparation]), *(['--throngtest-check-fingerprints'] if checked else []), timeout=60,
+        '--isolates=2', '-n', '2', f'--dist={mode}', '--distribution=files', f'--backend={backend}',
+        '--preparation=' + json.dumps([preparation]), *(['--check-fingerprints'] if checked else []), timeout=60,
     )
     result.assert_outcomes(passed=16)
     records = [json.loads(record.read_text()) for record in tmp_path.glob('*.json')]
@@ -131,7 +131,7 @@ def test_nested_absolute_parameter_paths(pytester: pytest.Pytester, checked: boo
         @pytest.mark.parametrize('path', [str(Path.cwd() / 'missing')])
         def test_path(path): assert Path(path).parent == Path.cwd()
     ''')
-    args = ['--throngtest-check-fingerprints'] if checked else []
+    args = ['--check-fingerprints'] if checked else []
     result = pytester.runpytest_subprocess('-n2', *args, timeout=45)
     if checked:
         assert result.ret == pytest.ExitCode.INTERNAL_ERROR
@@ -144,8 +144,8 @@ def test_nested_absolute_parameter_paths(pytester: pytest.Pytester, checked: boo
 def test_nested_duplicate_nodeids(pytester: pytest.Pytester, backend: str, checked: bool) -> None:
     """Preserve duplicate collected occurrences when xdist schedules an isolate's tests."""
     test = pytester.makepyfile('def test_ok(): pass')
-    args = ['--throngtest-check-fingerprints'] if checked else []
-    pytester.runpytest_subprocess('--isolates=1', '-n2', f'--throngtest-backend={backend}', *args, str(test), str(test), timeout=45).assert_outcomes(passed=2)
+    args = ['--check-fingerprints'] if checked else []
+    pytester.runpytest_subprocess('--isolates=1', '-n2', f'--backend={backend}', *args, str(test), str(test), timeout=45).assert_outcomes(passed=2)
 
 
 @pytest.mark.parametrize('source', ['cli', 'environment', 'ini'])
@@ -195,7 +195,7 @@ def test_xdist_loadgroup_marks_and_file_distribution(pytester: pytest.Pytester, 
         def test_item(index):
             (Path({str(tmp_path)!r}) / str(index)).write_text(str(os.getpid()))
     ''')
-    result = pytester.runpytest_subprocess('--isolates=2', '-n2', '--dist=loadgroup', '--throngtest-check-fingerprints', f'--throngtest-backend={backend}', '--throngtest-distribution=files', timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=2', '-n2', '--dist=loadgroup', '--check-fingerprints', f'--backend={backend}', '--distribution=files', timeout=45)
     result.assert_outcomes(passed=8)
     assert len({path.read_text() for path in tmp_path.iterdir()}) == 1
 
@@ -211,7 +211,7 @@ def test_nested_failfast(pytester: pytest.Pytester, backend: str) -> None:
         @pytest.mark.parametrize('index', range(20))
         def test_fail(index): assert False
     ''')
-    result = pytester.runpytest_subprocess('--isolates=1', '-n2', '-x', f'--throngtest-backend={backend}', timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=1', '-n2', '-x', f'--backend={backend}', timeout=45)
     assert result.ret == pytest.ExitCode.TESTS_FAILED
     assert 1 <= result.parseoutcomes()['failed'] <= 2
     assert 'exactly once' not in result.stdout.str()
@@ -231,7 +231,7 @@ def test_nested_worker_crash(pytester: pytest.Pytester, backend: str, restart: s
         def test_ok(): pass
         def test_also_ok(): pass
     ''')
-    result = pytester.runpytest_subprocess('--isolates=1', '-n1', '--max-worker-restart=' + restart, f'--throngtest-backend={backend}', '--junitxml=results.xml', timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=1', '-n1', '--max-worker-restart=' + restart, f'--backend={backend}', '--junitxml=results.xml', timeout=45)
     assert result.ret == pytest.ExitCode.TESTS_FAILED
     assert result.parseoutcomes()['failed'] == 1
     assert 'crashed while running' in result.stdout.str()
@@ -302,7 +302,7 @@ def test_nested_empty_shards(pytester: pytest.Pytester, backend: str, count: int
         @pytest.mark.parametrize('index', range(4))
         def test_item(index): pass
     ''')
-    result = pytester.runpytest_subprocess('--isolates=2', '-n2', f'--throngtest-backend={backend}', timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=2', '-n2', f'--backend={backend}', timeout=45)
     result.assert_outcomes(passed=count)
     assert result.ret == (pytest.ExitCode.OK if count else pytest.ExitCode.NO_TESTS_COLLECTED)
 
@@ -313,7 +313,7 @@ def test_nested_warnings(pytester: pytest.Pytester, backend: str) -> None:
         import warnings
         def test_warning(): warnings.warn('nested warning', UserWarning)
     ''')
-    result = pytester.runpytest_subprocess('--isolates=1', '-n2', f'--throngtest-backend={backend}', timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=1', '-n2', f'--backend={backend}', timeout=45)
     result.assert_outcomes(passed=1, warnings=1)
     assert 'nested warning' in result.stdout.str()
 
@@ -338,7 +338,7 @@ def test_grouped_worker_crash_without_restart(pytester: pytest.Pytester, stage: 
         def test_crash(resource):
             if {stage!r} == 'call': os._exit(17)
     ''')
-    result = pytester.runpytest_subprocess('--isolates=1', '-n1', '--dist=loadgroup', '--max-worker-restart=0', '--throngtest-check-fingerprints', timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=1', '-n1', '--dist=loadgroup', '--max-worker-restart=0', '--check-fingerprints', timeout=45)
     assert result.ret == pytest.ExitCode.TESTS_FAILED
     assert result.parseoutcomes()['failed'] == 1
     assert 'crashed while running' in result.stdout.str()
@@ -357,7 +357,7 @@ def test_preparation_failure_prevents_xdist_start(pytester: pytest.Pytester, tmp
     ''')
     pytester.makepyfile('def test_never(): assert False')
     commands = [shlex.join([sys.executable, '-c', 'raise SystemExit(7)'])]
-    result = pytester.runpytest_subprocess('--isolates=2', '-n2', '--throngtest-preparation=' + json.dumps(commands), timeout=45)
+    result = pytester.runpytest_subprocess('--isolates=2', '-n2', '--preparation=' + json.dumps(commands), timeout=45)
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     assert 'preparation command 1 failed with exit code 7' in result.stdout.str()
     assert not (tmp_path / 'started').exists()
@@ -395,7 +395,7 @@ def test_loadgroup_preserves_other_plugins_nodeid_changes(pytester: pytest.Pytes
         @pytest.mark.xdist_group('group')
         def test_ok(): pass
     ''')
-    args = ['--throngtest-check-fingerprints'] if checked else []
+    args = ['--check-fingerprints'] if checked else []
     result = pytester.runpytest_subprocess('--isolates=1', '-n2', '--dist=loadgroup', '--junitxml=results.xml', *args, timeout=45)
     result.assert_outcomes(passed=1)
     case = ElementTree.parse(pytester.path / 'results.xml').find('.//testcase')

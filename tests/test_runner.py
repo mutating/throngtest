@@ -8,7 +8,7 @@ from cantok import SimpleToken
 from throng import AbstractManager
 
 from throngtest.protocol import Request, WorkerError, encode
-from throngtest.runner import Runner, execute, relocate, replay
+from throngtest.runner import Runner, execute, relocate, replay, worker_arguments
 from throngtest.settings import ARGUMENTS, Settings
 
 
@@ -33,8 +33,25 @@ def test_relocate_paths(tmp_path: Path) -> None:
     child.mkdir()
     (child / '2').touch()
     assert relocate('--isolates=2', root, child, root) == '--isolates=2'
-    preparation = '--throngtest-preparation=["echo ' + 'long command ' * 100 + '"]'
+    preparation = '--preparation=["echo ' + 'long command ' * 100 + '"]'
     assert relocate(preparation, root, tmp_path, root) == preparation
+
+
+@pytest.mark.parametrize('option', ['--isolates', '--backend', '--distribution', '--python', '--exclude', '--preparation'])
+def test_worker_arguments_preserve_unprefixed_option_values(pytester: pytest.Pytester, tmp_path: Path, option: str) -> None:
+    """Keep isolate option values intact with both CLI argument spellings.
+
+    A same-named file in the invocation directory would trigger path rewriting
+    if a value were mistaken for a test path during worker dispatch.
+    """
+    root = tmp_path / 'project'
+    invocation = root / 'subdirectory'
+    invocation.mkdir(parents=True)
+    (invocation / 'value').touch()
+    config = pytester.parseconfig('--isolates=0')
+    for arguments in ([option, 'value'], [f'{option}=value']):
+        config.stash[ARGUMENTS] = arguments
+        assert worker_arguments(config, root, invocation, Path())[:len(arguments)] == arguments
 
 
 @pytest.mark.parametrize('stage', ['enter', 'run', 'exit'])

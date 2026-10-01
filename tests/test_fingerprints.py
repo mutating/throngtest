@@ -33,9 +33,9 @@ def test_changed_identifiers_with_each_setting_source(pytester: pytest.Pytester,
             assert not marker.exists()
             marker.touch()
     ''')
-    arguments = ['--isolates=2', f'--throngtest-backend={backend}', '--junitxml=results.xml']
+    arguments = ['--isolates=2', f'--backend={backend}', '--junitxml=results.xml']
     if source == 'cli':
-        arguments.append('--throngtest-check-fingerprints' if checked else '--throngtest-no-check-fingerprints')
+        arguments.append('--check-fingerprints' if checked else '--no-check-fingerprints')
     elif source == 'environment':
         monkeypatch.setenv('THRONGTEST_CHECK_FINGERPRINTS', str(checked).lower())
     elif source == 'toml':
@@ -70,7 +70,7 @@ def test_fingerprint_flag_before_an_absolute_test_path(pytester: pytest.Pytester
     child.mkdir()
     (child / 'keep.txt').write_text('Keep the invocation directory in the isolate snapshot.')
     monkeypatch.chdir(child)
-    flag = '--throngtest-check-fingerprints' if checked else '--throngtest-no-check-fingerprints'
+    flag = '--check-fingerprints' if checked else '--no-check-fingerprints'
     pytester.runpytest_subprocess(flag, str(test), timeout=30).assert_outcomes(passed=1)
 
 
@@ -114,7 +114,7 @@ def test_changed_collection_sizes_without_fingerprints(pytester: pytest.Pytester
             items[:] = items[:count]
     ''')
     pytester.makepyfile(**{f'test_{index}': 'def test_ok(): pass' for index in range(4)})
-    result = pytester.runpytest_subprocess(f'--throngtest-backend={backend}', f'--throngtest-distribution={distribution}', timeout=30)
+    result = pytester.runpytest_subprocess(f'--backend={backend}', f'--distribution={distribution}', timeout=30)
     result.assert_outcomes(passed=worker_count)
     assert result.ret == (pytest.ExitCode.OK if worker_count else pytest.ExitCode.NO_TESTS_COLLECTED)
 
@@ -123,5 +123,5 @@ def test_changed_collection_sizes_without_fingerprints(pytester: pytest.Pytester
 def test_duplicate_identifiers_remain_valid_in_both_modes(pytester: pytest.Pytester, backend: str, checked: bool) -> None:
     """Preserve duplicate test occurrences with fingerprint checking enabled or disabled."""
     test = pytester.makepyfile('def test_ok(): pass')
-    flag = '--throngtest-check-fingerprints' if checked else '--throngtest-no-check-fingerprints'
-    pytester.runpytest_subprocess(f'--throngtest-backend={backend}', flag, '--keep-duplicates', str(test), str(test), timeout=30).assert_outcomes(passed=2)
+    flag = '--check-fingerprints' if checked else '--no-check-fingerprints'
+    pytester.runpytest_subprocess(f'--backend={backend}', flag, '--keep-duplicates', str(test), str(test), timeout=30).assert_outcomes(passed=2)

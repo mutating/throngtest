@@ -7,10 +7,10 @@ import pytest
 
 
 def run(pytester: pytest.Pytester, backend: str, *arguments: str) -> pytest.RunResult:
-    return pytester.runpytest_subprocess('--isolates=2', f'--throngtest-backend={backend}', *arguments, timeout=30)
+    return pytester.runpytest_subprocess('--isolates=2', f'--backend={backend}', *arguments, timeout=30)
 
 
-@pytest.mark.parametrize(('arguments', 'workers'), [((), 4), (('--isolates=2',), 2), (('--isolates', '2'), 2), (('--throngtest-check-fingerprints',), 4)])
+@pytest.mark.parametrize(('arguments', 'workers'), [((), 4), (('--isolates=2',), 2), (('--isolates', '2'), 2), (('--check-fingerprints',), 4)])
 def test_real_isolates_execute_every_test_once(pytester: pytest.Pytester, backend: str, tmp_path: Path, arguments: tuple, workers: int) -> None:
     """Execute every test once through the selected throng backend and isolate count.
 
@@ -46,7 +46,7 @@ def test_real_isolates_execute_every_test_once(pytester: pytest.Pytester, backen
             target.write_text(json.dumps({{'pid': os.getpid(), 'cwd': str(Path.cwd())}}))
             Path('isolate-marker').write_text('written')
     ''')
-    result = pytester.runpytest_subprocess(f'--throngtest-backend={backend}', *arguments, timeout=30)
+    result = pytester.runpytest_subprocess(f'--backend={backend}', *arguments, timeout=30)
     result.assert_outcomes(passed=8)
     records = [json.loads((tmp_path / str(index)).read_text()) for index in range(8)]
     dispatched = [path.read_text() for path in tmp_path.glob('dispatch-*')]
@@ -109,7 +109,7 @@ def test_files_stay_together_and_fixtures_work(pytester: pytest.Pytester, backen
             assert resource == 42
     '''
     pytester.makepyfile(test_a=source, test_b=source)
-    run(pytester, backend, '--throngtest-distribution=files').assert_outcomes(passed=8)
+    run(pytester, backend, '--distribution=files').assert_outcomes(passed=8)
     assert (tmp_path / 'test_a.fixture').read_text() != (tmp_path / 'test_b.fixture').read_text()
     assert len(list(tmp_path.glob('*.done'))) == 2
 
@@ -246,7 +246,7 @@ def test_collection_mismatch(pytester: pytest.Pytester, backend: str, tmp_path: 
         @pytest.mark.parametrize('value', values)
         def test_item(value): raise AssertionError('test must not execute')
     ''')
-    result = run(pytester, backend, '--throngtest-check-fingerprints')
+    result = run(pytester, backend, '--check-fingerprints')
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     output = result.stdout.str() + result.stderr.str()
     assert 'collection differs' in output
@@ -277,7 +277,7 @@ def test_collection_diagnostic_for_absolute_parameter_path(pytester: pytest.Pyte
         @pytest.mark.parametrize('value', [{path_expression}])
         def test_item(value): raise AssertionError('test must not execute')
     ''')
-    result = run(pytester, 'temporary_directory', '--throngtest-check-fingerprints')
+    result = run(pytester, 'temporary_directory', '--check-fingerprints')
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     output = result.stdout.str() + result.stderr.str()
     assert 'controller: 1 selected tests\nisolate: 1 selected tests' in output
@@ -353,7 +353,7 @@ def test_invocation_directory_and_absolute_nodeid(pytester: pytest.Pytester, bac
 def test_missing_interpreter(pytester: pytest.Pytester, backend: str) -> None:
     """Report a missing configured Python executable as a worker startup failure."""
     pytester.makepyfile('def test_ok(): pass')
-    result = run(pytester, backend, '--throngtest-python=missing-throngtest-python')
+    result = run(pytester, backend, '--python=missing-throngtest-python')
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     assert 'worker terminated without a result' in result.stdout.str() + result.stderr.str()
 
@@ -384,7 +384,7 @@ def test_excluded_file_is_not_copied(pytester: pytest.Pytester) -> None:
     """Omit explicitly excluded project files from temporary isolate copies."""
     (pytester.path / 'private.txt').write_text('not for the snapshot')
     pytester.makepyfile('from pathlib import Path\ndef test_excluded(): assert not Path("private.txt").exists()')
-    run(pytester, 'temporary_directory', '--throngtest-exclude=["private.txt"]').assert_outcomes(passed=1)
+    run(pytester, 'temporary_directory', '--exclude=["private.txt"]').assert_outcomes(passed=1)
 
 
 def test_strict_xpass_is_failure(pytester: pytest.Pytester, backend: str) -> None:
