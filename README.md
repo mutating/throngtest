@@ -1,4 +1,22 @@
+<details>
+  <summary>ⓘ</summary>
+
+[![Downloads](https://static.pepy.tech/badge/throngtest/month)](https://pepy.tech/project/throngtest)
+[![Downloads](https://static.pepy.tech/badge/throngtest)](https://pepy.tech/project/throngtest)
+[![Coverage Status](https://coveralls.io/repos/github/mutating/throngtest/badge.svg?branch=main)](https://coveralls.io/github/mutating/throngtest?branch=main)
+[![Lines of code](https://sloc.xyz/github/mutating/throngtest/?category=code)](https://github.com/boyter/scc/)
+[![Hits-of-Code](https://hitsofcode.com/github/mutating/throngtest?branch=main)](https://hitsofcode.com/github/mutating/throngtest/view?branch=main)
+[![Test-Package](https://github.com/mutating/throngtest/actions/workflows/tests_and_coverage.yml/badge.svg)](https://github.com/mutating/throngtest/actions/workflows/tests_and_coverage.yml)
+[![Python versions](https://img.shields.io/pypi/pyversions/throngtest.svg)](https://pypi.python.org/pypi/throngtest)
+[![PyPI version](https://badge.fury.io/py/throngtest.svg)](https://badge.fury.io/py/throngtest)
+[![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mutating/throngtest)
+
+</details>
+
 ![logo](https://raw.githubusercontent.com/mutating/throngtest/develop/docs/assets/logo_2.svg)
+
 
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
 Throngtest is an independent pytest plugin: it has its own options and does not
