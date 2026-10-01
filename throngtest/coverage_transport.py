@@ -82,9 +82,12 @@ def receive(payload: Dict[str, object], targets: Dict[str, str], root: Path) -> 
                     source = Path(temporary) / 'data'
                     source.write_bytes(content)
                     source_data = CoverageData(basename=str(source))
-                    source_data.read()
-                    restored = CoverageData(basename=target, suffix=uuid4().hex)
-                    restored.update(source_data, map_path=map_path)
-                    restored.write()
+                    try:
+                        source_data.read()
+                        restored = CoverageData(basename=target, suffix=uuid4().hex)
+                        restored.update(source_data, map_path=map_path)
+                        restored.write()
+                    finally:
+                        source_data.erase()
             except DataError as error:
                 raise WorkerError('isolate returned malformed coverage data') from error
