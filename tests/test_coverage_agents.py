@@ -6,9 +6,11 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from typing import Dict, List, cast
+from typing import Dict, Iterator, List, cast
 from unittest.mock import MagicMock
 
 import coverage
@@ -464,6 +466,27 @@ def test_export_accepts_absolute_data_file_and_skips_non_sqlite(tmp_path: Path, 
 def test_bad_coverage_payload_is_rejected(tmp_path: Path, payload: Dict[str, object]) -> None:
     """Never mistake missing or malformed remote data for successful coverage."""
     with pytest.raises(WorkerError, match='coverage data'):
+        receive(payload, {'provider': str(tmp_path / '.coverage')}, tmp_path)
+
+
+def test_bad_coverage_database_is_released_before_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Close a damaged SQLite database before removing its temporary directory.
+
+    The wrapper checks the file before directory cleanup, mirroring the point
+    where Windows rejects deletion of a database with an open connection.
+    """
+    @contextmanager
+    def checked_temporary_directory(prefix: str) -> Iterator[str]:
+        with TemporaryDirectory(prefix=prefix) as directory:
+            try:
+                yield directory
+            finally:
+                assert not (Path(directory) / 'data').exists()
+
+    monkeypatch.setattr('throngtest.coverage_transport.TemporaryDirectory', checked_temporary_directory)
+    damaged = base64.b64encode(b'SQLite format 3\x00garbage').decode('ascii')
+    payload: Dict[str, object] = {'root': '/remote', 'files': {'provider': [damaged]}}
+    with pytest.raises(WorkerError, match='malformed coverage data'):
         receive(payload, {'provider': str(tmp_path / '.coverage')}, tmp_path)
 
 
