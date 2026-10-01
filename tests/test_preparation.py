@@ -65,11 +65,11 @@ import pytest
 def test_prepared(index):
     assert (Path.cwd().parent / 'second marker').read_text() == 'prepared'
 ''')
-    arguments = ['--isolates=2', f'--throngtest-backend={backend}']
+    arguments = ['--isolates=2', f'--backend={backend}']
     if source == 'cli':
-        arguments.append('--throngtest-preparation=' + json.dumps(commands))
+        arguments.append('--preparation=' + json.dumps(commands))
     elif source == 'cli_separate':
-        arguments.extend(['--throngtest-preparation', json.dumps(commands)])
+        arguments.extend(['--preparation', json.dumps(commands)])
     elif source == 'environment':
         monkeypatch.setenv('THRONGTEST_PREPARATION', json.dumps(commands))
     else:
@@ -106,7 +106,7 @@ def test_preparation_failure_stops_commands_and_tests(pytester: pytest.Pytester,
         python_command(f'from pathlib import Path; Path({str(forbidden)!r}).touch()'),
     ]
     pytester.makepyfile(f'from pathlib import Path\ndef test_never(): Path({str(forbidden)!r}).touch()')
-    result = pytester.runpytest_subprocess('--isolates=1', f'--throngtest-backend={backend}', '--throngtest-preparation=' + json.dumps(commands), timeout=30)
+    result = pytester.runpytest_subprocess('--isolates=1', f'--backend={backend}', '--preparation=' + json.dumps(commands), timeout=30)
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     output = result.stdout.str() + result.stderr.str()
     assert 'preparation command 2 failed with exit code 7' in output
@@ -124,7 +124,7 @@ def test_preparation_is_not_run_without_isolates(pytester: pytest.Pytester, tmp_
     marker = tmp_path / 'must-not-run'
     commands = [python_command(f'from pathlib import Path; Path({str(marker)!r}).touch()')]
     pytester.makepyfile('def test_ok(): pass')
-    result = pytester.runpytest_subprocess(*arguments, '--throngtest-preparation=' + json.dumps(commands), timeout=30)
+    result = pytester.runpytest_subprocess(*arguments, '--preparation=' + json.dumps(commands), timeout=30)
     assert result.ret == exitcode
     assert not marker.exists()
 
@@ -157,7 +157,7 @@ def test_preparation_failure_cancels_other_preparation(pytester: pytest.Pytester
             sys.exit(9)
     ''')
     commands = [shlex.join([sys.executable, script.name])]
-    result = pytester.runpytest_subprocess('--isolates=2', '--throngtest-preparation=' + json.dumps(commands), timeout=30)
+    result = pytester.runpytest_subprocess('--isolates=2', '--preparation=' + json.dumps(commands), timeout=30)
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     assert 'preparation command 1 failed with exit code 9' in result.stdout.str() + result.stderr.str()
     assert not (tmp_path / 'not-cancelled').exists()

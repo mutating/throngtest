@@ -25,8 +25,8 @@ depend on pytest-xdist or implement xdist's flags or fixtures.
 ```bash
 pip install throngtest
 pytest
-pytest --throngtest-distribution=files
-pytest --isolates=2 --throngtest-backend=local
+pytest --distribution=files
+pytest --isolates=2 --backend=local
 ```
 
 Installing the plugin enables distribution into up to four isolates by default.
@@ -38,7 +38,7 @@ Python 3.8+ and pytest 8.3.5–9.x are supported.
 All throngtest settings are loaded, converted and validated through
 [skelet](https://github.com/mutating/skelet). Sources have this precedence:
 
-1. Explicit `--throngtest-*` arguments, including arguments supplied by pytest's
+1. Explicit CLI options listed below, including arguments supplied by pytest's
    `addopts` or `PYTEST_ADDOPTS`.
 2. Environment variables with the `THRONGTEST_` prefix.
 3. `[tool.throngtest]` in `pyproject.toml` at pytest's `rootdir`.
@@ -55,18 +55,18 @@ preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
 
 ```bash
 THRONGTEST_WORKERS=4 pytest
-pytest --isolates=2 --throngtest-exclude='[".git/", ".venv/", "large-data/"]'
+pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
 ```
 
 | Setting | CLI option | Default | Meaning |
 | --- | --- | --- | --- |
 | `workers` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
-| `check_fingerprints` | `--throngtest-check-fingerprints` | `false` | Require identical ordered collections in the controller and isolates. |
-| `backend` | `--throngtest-backend` | `temporary_directory` | Name of an installed throng plugin. |
-| `distribution` | `--throngtest-distribution` | `tests` | Split individual tests or keep each file together (`files`). |
-| `python` | `--throngtest-python` | Controller's `sys.executable` | Python executable available inside each isolate. |
-| `exclude` | `--throngtest-exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
-| `preparation` | `--throngtest-preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
+| `check_fingerprints` | `--check-fingerprints` | `false` | Require identical ordered collections in the controller and isolates. |
+| `backend` | `--backend` | `temporary_directory` | Name of an installed throng plugin. |
+| `distribution` | `--distribution` | `tests` | Split individual tests or keep each file together (`files`). |
+| `python` | `--python` | Controller's `sys.executable` | Python executable available inside each isolate. |
+| `exclude` | `--exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
+| `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
 
 The default exclusions are `.git/`, `.venv/`, `venv/`, `__pycache__/`,
 `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, `dist/`, and `mutants/`.
@@ -74,9 +74,9 @@ An explicit exclusion list replaces the defaults. Patterns are interpreted by
 throng. Configurations are read afresh for each pytest session.
 
 Fingerprint checks are disabled by default. Enable them with
-`--throngtest-check-fingerprints`, `THRONGTEST_CHECK_FINGERPRINTS=true`, or
+`--check-fingerprints`, `THRONGTEST_CHECK_FINGERPRINTS=true`, or
 `check_fingerprints = true` in `[tool.throngtest]`. Use
-`--throngtest-no-check-fingerprints` to override an enabled setting from the
+`--no-check-fingerprints` to override an enabled setting from the
 environment or TOML. Both CLI flags take no value; if both are supplied, the
 last flag wins. The environment accepts `true`/`false`; TOML uses booleans.
 
@@ -86,7 +86,7 @@ Use `preparation` to generate files, install dependencies, or otherwise prepare
 each isolate before its pytest process starts:
 
 ```bash
-pytest --throngtest-preparation='["python scripts/prepare.py"]'
+pytest --preparation='["python scripts/prepare.py"]'
 THRONGTEST_PREPARATION='["python scripts/prepare.py"]' pytest
 ```
 
@@ -223,7 +223,7 @@ budget. Xdist's `worker_id` values, such as `gw0`, are local to each isolate.
 
 The supported schedulers are `load`, `loadfile`, `loadscope`, `loadgroup`, and
 `worksteal`. Their grouping guarantees apply within each assigned subset.
-For example, use `--throngtest-distribution=files --dist=loadfile` to keep a
+For example, use `--distribution=files --dist=loadfile` to keep a
 file together at both levels. Xdist groups do not combine tests from different
 isolates. `--dist=each` is rejected because it intentionally repeats tests.
 Explicit `--tx`/`--px` execution environments and `--looponfail` are unsupported;
@@ -245,7 +245,7 @@ throng backends must provide stdout and a process return code. The selected
 interpreter must have throngtest, pytest, the project's dependencies, and
 required pytest plugins available by the end of preparation. Throngtest only
 installs packages when explicitly instructed through preparation commands.
-For a remote backend, set `--throngtest-python` to an interpreter available in
+For a remote backend, set `--python` to an interpreter available in
 the isolate, such as `python`; its default is the controller's absolute
 `sys.executable` path, which is usually absent on a remote machine.
 

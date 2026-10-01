@@ -533,7 +533,7 @@ def test_real_coverage_reaches_controller(pytester: pytest.Pytester, backend: st
     environment.pop('COVERAGE_PROCESS_START', None)
     environment.pop('COVERAGE_FILE', None)
     arguments = [sys.executable, '-m', 'coverage', 'run', '-m', 'pytest'] if provider == 'coverage' else [sys.executable, '-m', 'pytest', '--cov=app', '--cov-branch', '--cov-fail-under=100']
-    result = subprocess.run([*arguments, '-q', '--isolates=2', f'--throngtest-backend={backend}'], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
+    result = subprocess.run([*arguments, '-q', '--isolates=2', f'--backend={backend}'], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
     if provider == 'coverage':
         combined = subprocess.run([sys.executable, '-m', 'coverage', 'combine', '-q'], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
@@ -568,7 +568,7 @@ def test_pytest_cov_combines_nested_xdist_isolates(pytester: pytest.Pytester) ->
     environment.pop('COVERAGE_PROCESS_START', None)
     environment.pop('COVERAGE_FILE', None)
     result = subprocess.run([
-        sys.executable, '-m', 'pytest', '-q', '--isolates=2', '--throngtest-backend=temporary_directory',
+        sys.executable, '-m', 'pytest', '-q', '--isolates=2', '--backend=temporary_directory',
         '-n', '2', '--cov=app', '--cov-branch', '--cov-fail-under=100',
     ], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr

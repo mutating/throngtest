@@ -21,10 +21,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ('exclude', 'JSON list of patterns excluded from the isolate snapshot'),
         ('preparation', 'JSON list of commands run in each isolate before pytest (default: [])'),
     ):
-        group.addoption(f'--throngtest-{name}', default=None, help=description)
-    group.addoption('--throngtest-check-fingerprints', action='store_const', const=True, default=None,
+        group.addoption(f'--{name}', dest=f'throngtest_{name}', metavar=name.upper(), default=None, help=description)
+    group.addoption('--check-fingerprints', action='store_const', const=True, default=None,
                     dest='throngtest_check_fingerprints', help='Require identical ordered test collections in all isolates (default: disabled)')
-    group.addoption('--throngtest-no-check-fingerprints', action='store_const', const=False, default=None,
+    group.addoption('--no-check-fingerprints', action='store_const', const=False, default=None,
                     dest='throngtest_check_fingerprints', help='Disable collection fingerprint checks, overriding environment and TOML settings')
 
 
