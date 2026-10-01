@@ -1,7 +1,5 @@
 ![logo](https://raw.githubusercontent.com/mutating/throngtest/develop/docs/assets/logo_2.svg)
 
-# throngtest
-
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
 Throngtest is an independent pytest plugin: it has its own options and does not
 depend on pytest-xdist or implement xdist's flags or fixtures.
