@@ -18,6 +18,52 @@
 ![logo](https://raw.githubusercontent.com/mutating/throngtest/develop/docs/assets/logo_2.svg)
 
 
+Are your tests taking too long to run? Are your agent workflows slowing down because the agent is simply waiting for your tests to finish? If so, you need `throngtest` — a tool for running tests in a distributed manner.
+
+The key feature is that tests can be run in a distributed and isolated manner on a wide variety of infrastructure — ranging from your own PC to a distributed network of computers or a computer cluster. The [`throng`](https://github.com/mutating/throng) technology is used for distribution, which allows different test runs to be isolated from one another and executed in parallel, hiding the specifics of a particular platform’s implementation from the control code.
+
+`throngtest` is a `pytest` plugin that creates `throng` isolates and runs sharded test-running commands within them.
+
+
+## Table of contents
+
+- [**Quick start**](#quick-start)
+- [**Why?**](#why)
+
+
+## Quick start
+
+Simply install [`throngtest`](https://pypi.org/project/throngtest) using the following command:
+
+```bash
+$ pip install throngtest
+```
+
+Now `throngtest` will be used automatically whenever you run `pytest`. You don't need to enable anything else; just type the command `pytest` into the console, and you'll see that the test was run using throngtest:
+
+```console
+$ pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/pomponchik/Desktop/Projects/pytest-throng/test-project
+configfile: pytest.ini
+testpaths: tests
+plugins: throngtest-0.0.3
+throngtest: 4 isolates, backend=temporary_directory, distribution=tests
+collected 6 items
+
+tests/test_calculator.py ......                                          [100%]
+
+============================== 6 passed in 0.37s ===============================
+```
+
+
+## Why?
+
+
+
+## Configuration
+
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
 Throngtest is an independent pytest plugin: it has its own options and does not
 depend on pytest-xdist or implement xdist's flags or fixtures.
@@ -33,7 +79,7 @@ Installing the plugin enables distribution into up to four isolates by default.
 Use `--isolates=0` to disable it and run ordinary pytest.
 Python 3.8+ and pytest 8.3.5–9.x are supported. Throng 0.0.9 or newer is required.
 
-## Configuration
+-------------------------
 
 All throngtest settings are loaded, converted and validated through
 [skelet](https://github.com/mutating/skelet). Sources have this precedence:
