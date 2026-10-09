@@ -12,7 +12,7 @@ from throngtest.xdist import Shard, suspend
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup('throngtest', 'Run test subsets in throng isolates')
-    group.addoption('--isolates', dest='throngtest_workers', metavar='COUNT', default=None,
+    group.addoption('--isolates', dest='throngtest_isolates', metavar='COUNT', default=None,
                     help='Maximum isolate count; 0 disables distribution (default: 4)')
     for name, description in (
         ('backend', 'Throng plugin name (default: temporary_directory)'),
@@ -35,7 +35,7 @@ def pytest_load_initial_conftests(early_config: pytest.Config, args: List[str]) 
 
 @pytest.hookimpl(wrapper=True, tryfirst=True)  # type: ignore[misc]
 def pytest_cmdline_main(config: pytest.Config) -> Generator[None, Optional[int], Optional[int]]:
-    if not config.stash.get(WORKER, False) and not hasattr(config, 'workerinput') and read_settings(config).workers:
+    if not config.stash.get(WORKER, False) and not hasattr(config, 'workerinput') and read_settings(config).isolates:
         suspend(config)
     return (yield)
 
@@ -49,7 +49,7 @@ def pytest_configure(config: pytest.Config) -> None:
     if config.stash.get(WORKER, False):
         return
     settings = read_settings(config)
-    if settings.workers:
+    if settings.isolates:
         if cast(bool, config.getoption('usepdb')):
             raise pytest.UsageError('throngtest cannot be combined with --pdb')
         if any(cast(object, config.getoption(name, default=False)) for name in ('lf', 'failedfirst', 'newfirst', 'stepwise')):

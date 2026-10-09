@@ -18,7 +18,7 @@ class PytestSource(FixedCLISource[object]):
     """Use pytest's argument discovery with skelet's typed CLI conversion."""
 
     def __init__(self, config: pytest.Config) -> None:
-        super().__init__(named_arguments=['workers', 'backend', 'distribution', 'python', 'exclude', 'preparation', 'packages'])
+        super().__init__(named_arguments=['isolates', 'backend', 'distribution', 'python', 'exclude', 'preparation', 'packages'])
         self.config = config
 
     def __getitem__(self, key: str) -> str:
@@ -41,7 +41,7 @@ def distribution(value: str) -> bool:
 
 
 class Settings(Storage):
-    workers: int = Field(4, validation={'workers must be nonnegative': nonnegative})
+    isolates: int = Field(4, validation={'isolates must be nonnegative': nonnegative})
     check_fingerprints: bool = Field(False)
     backend: str = Field('temporary_directory', validation={'backend must not be empty': nonempty})
     distribution: str = Field('tests', validation={'distribution must be tests or files': distribution})

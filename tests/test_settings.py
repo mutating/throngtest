@@ -9,7 +9,7 @@ from throngtest.settings import Settings, read_settings
 def test_defaults(pytester: pytest.Pytester) -> None:
     """Use the documented defaults when no configuration source supplies values."""
     settings = read_settings(pytester.parseconfig())
-    assert settings.workers == 4
+    assert settings.isolates == 4
     assert settings.check_fingerprints is False
     assert settings.backend == 'temporary_directory'
     assert settings.distribution == 'tests'
@@ -25,33 +25,32 @@ def test_precedence_and_fresh_environment(pytester: pytest.Pytester, monkeypatch
     Reusing the same pytest config after environment changes detects settings
     cached between reads; explicit CLI values then verify the highest priority.
     """
-    pytester.makepyprojecttoml('[tool.throngtest]\nworkers = 2\nbackend = "local"\ndistribution = "files"\nexclude = ["large/"]')
+    pytester.makepyprojecttoml('[tool.throngtest]\nisolates = 2\nbackend = "local"\ndistribution = "files"\nexclude = ["large/"]')
     config = pytester.parseconfig()
-    assert read_settings(config).workers == 2
+    assert read_settings(config).isolates == 2
     assert read_settings(config).backend == 'local'
     assert read_settings(config).distribution == 'files'
     assert read_settings(config).exclude == ['large/']
-    monkeypatch.setenv('THRONGTEST_WORKERS', '3')
-    assert read_settings(config).workers == 3
-    monkeypatch.setenv('THRONGTEST_WORKERS', '4')
-    assert read_settings(config).workers == 4
+    monkeypatch.setenv('THRONGTEST_ISOLATES', '3')
+    assert read_settings(config).isolates == 3
+    monkeypatch.setenv('THRONGTEST_ISOLATES', '4')
+    assert read_settings(config).isolates == 4
     config = pytester.parseconfig('--isolates=0', '--distribution=tests', '--python=custom python', '--exclude=["custom/"]')
     settings = read_settings(config)
-    assert settings.workers == 0
+    assert settings.isolates == 0
     assert settings.distribution == 'tests'
     assert settings.python == 'custom python'
     assert settings.exclude == ['custom/']
 
 
-@pytest.mark.parametrize(('name', 'value'), [('workers', '-1'), ('workers', 'nope'), ('backend', ' '), ('distribution', 'other'), ('python', ''), ('exclude', 'oops'), ('preparation', 'oops'), ('packages', 'oops')])
+@pytest.mark.parametrize(('name', 'value'), [('isolates', '-1'), ('isolates', 'nope'), ('backend', ' '), ('distribution', 'other'), ('python', ''), ('exclude', 'oops'), ('preparation', 'oops'), ('packages', 'oops')])
 def test_invalid_cli(pytester: pytest.Pytester, name: str, value: str) -> None:
     """Report invalid CLI values as plugin-specific pytest usage errors."""
-    option = '--isolates' if name == 'workers' else f'--{name}'
     with pytest.raises(pytest.UsageError, match='throngtest:'):
-        read_settings(pytester.parseconfig(f'{option}={value}'))
+        read_settings(pytester.parseconfig(f'--{name}={value}'))
 
 
-def test_workers_cli_was_renamed(pytester: pytest.Pytester) -> None:
+def test_isolates_cli(pytester: pytest.Pytester) -> None:
     """Advertise --isolates in help and reject the removed --throngtest-workers option."""
     result = pytester.runpytest_subprocess('--help')
     assert result.ret == pytest.ExitCode.OK
@@ -74,8 +73,8 @@ def test_unprefixed_options_replace_old_names(pytester: pytest.Pytester, name: s
 
 
 def test_invalid_toml_type(pytester: pytest.Pytester) -> None:
-    """Reject a TOML worker count whose type does not match the setting."""
-    pytester.makepyprojecttoml('[tool.throngtest]\nworkers = "two"')
+    """Reject a TOML isolate count whose type does not match the setting."""
+    pytester.makepyprojecttoml('[tool.throngtest]\nisolates = "two"')
     with pytest.raises(pytest.UsageError, match='throngtest:'):
         read_settings(pytester.parseconfig())
 

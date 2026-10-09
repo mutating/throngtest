@@ -81,7 +81,7 @@ class Worker:
             self.error = 'test collection differs between the controller and the isolate'
             self.collection = nodeids
             raise pytest.UsageError(self.error)
-        shards = partition(nodeids, self.request.workers, self.request.distribution)
+        shards = partition(nodeids, self.request.isolates, self.request.distribution)
         indices = shards[self.request.shard] if self.request.shard < len(shards) else []
         self.assigned = [nodeids[index] for index in indices]
         session.items[:] = [session.items[index] for index in indices]

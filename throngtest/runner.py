@@ -295,7 +295,7 @@ class Runner:
         self.settings = settings
 
     def pytest_report_header(self) -> str:
-        return f'throngtest: {self.settings.workers} isolates, backend={self.settings.backend}, distribution={self.settings.distribution}'
+        return f'throngtest: {self.settings.isolates} isolates, backend={self.settings.backend}, distribution={self.settings.distribution}'
 
     @pytest.hookimpl(tryfirst=True)  # type: ignore[misc]  # pluggy's decorator exposes Any in its generic bound.
     def pytest_runtestloop(self, session: pytest.Session) -> bool:
@@ -311,7 +311,7 @@ class Runner:
             directory = Path()
         arguments = worker_arguments(session.config, root, invocation, directory)
         nodeids = [item.nodeid for item in session.items]
-        shards = partition(nodeids, self.settings.workers, self.settings.distribution)
+        shards = partition(nodeids, self.settings.isolates, self.settings.distribution)
         collection_fingerprint = fingerprint(nodeids) if self.settings.check_fingerprints else None
         enabled, targets, configurations = coverage_plan(session.config, self.settings.backend)
         completed = 0

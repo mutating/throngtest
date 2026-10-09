@@ -97,7 +97,7 @@ def test_failure_cancels_every_lifecycle_phase(pytester: pytest.Pytester, monkey
     monkeypatch.setattr('throngtest.runner.throng', factory)
     settings = Settings(_sources=[])
     settings.backend = 'probe'
-    settings.workers = 2
+    settings.isolates = 2
     settings.packages = ['dependency']
     settings.exclude = ['excluded/']
     settings.preparation = ['project setup']

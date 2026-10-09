@@ -223,7 +223,7 @@ def test_interrupt_cancels_token_without_changing_cwd(pytester: pytest.Pytester,
     chdir = Mock(side_effect=AssertionError('controller must not change cwd'))
     monkeypatch.setattr('throngtest.runner.os.chdir', chdir)
     settings = Settings(_sources=[])
-    settings.workers = 1
+    settings.isolates = 1
     with pytest.raises(session.Interrupted, match='requested stop'):
         Runner(settings).pytest_runtestloop(session)
     assert Path.cwd() == tmp_path
