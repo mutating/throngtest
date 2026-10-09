@@ -94,7 +94,7 @@ All throngtest settings are loaded, converted and validated through
 
 ```toml
 [tool.throngtest]
-workers = 4
+isolates = 4
 check_fingerprints = false
 backend = "temporary_directory"
 distribution = "files"
@@ -103,13 +103,13 @@ preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
 ```
 
 ```bash
-THRONGTEST_WORKERS=4 pytest
+THRONGTEST_ISOLATES=4 pytest
 pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
 ```
 
 | Setting | CLI option | Default | Meaning |
 | --- | --- | --- | --- |
-| `workers` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
+| `isolates` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
 | `check_fingerprints` | `--check-fingerprints` | `false` | Require identical ordered collections in the controller and isolates. |
 | `backend` | `--backend` | `temporary_directory` | Name of an installed throng plugin. |
 | `distribution` | `--distribution` | `tests` | Split individual tests or keep each file together (`files`). |
@@ -143,7 +143,7 @@ THRONGTEST_PACKAGES='["requests"]' pytest
 The equivalent TOML setting is `packages = ["requests"]` in
 `[tool.throngtest]`. Each isolate receives the complete list once, in order.
 An explicit list replaces the lower-priority list; `[]` disables installation.
-No installation runs with `workers = 0`, `--collect-only`, or an empty test
+No installation runs with `isolates = 0`, `--collect-only`, or an empty test
 selection. The controller must already have the dependencies needed for its
 initial collection; packages are installed only in the isolates.
 
@@ -185,7 +185,7 @@ not forward its `preparation` setting to the manager's `prepare` parameter,
 which discards successful command results.
 
 An explicit list replaces the lower-priority list; `[]` disables preparation.
-No preparation runs with `workers = 0`, `--collect-only`, or an empty test
+No preparation runs with `isolates = 0`, `--collect-only`, or an empty test
 selection. The controller collects tests before creating isolates, so its
 environment must already support that initial collection. Preparation runs
 before collection inside each worker, not before controller collection.
@@ -233,7 +233,7 @@ needs the agent package installed.
 ## Distribution and execution
 
 The controller collects and selects tests using pytest. It partitions the
-result into at most `workers` nonempty subsets. In `tests` mode, tests are
+result into at most `isolates` nonempty subsets. In `tests` mode, tests are
 assigned in round-robin order. In `files` mode, larger files are assigned first
 to the least populated subset, using test counts as the size estimate. Original
 collection order is preserved within each subset. Durations are not predicted
