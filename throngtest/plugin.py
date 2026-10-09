@@ -20,6 +20,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ('python', 'Python executable available inside the isolate'),
         ('exclude', 'JSON list of patterns excluded from the isolate snapshot'),
         ('preparation', 'JSON list of commands run in each isolate before pytest (default: [])'),
+        ('packages', 'JSON list of packages installed by the backend before preparation (default: [])'),
     ):
         group.addoption(f'--{name}', dest=f'throngtest_{name}', metavar=name.upper(), default=None, help=description)
     group.addoption('--check-fingerprints', action='store_const', const=True, default=None,
