@@ -31,7 +31,7 @@ pytest --isolates=2 --backend=local
 
 Installing the plugin enables distribution into up to four isolates by default.
 Use `--isolates=0` to disable it and run ordinary pytest.
-Python 3.8+ and pytest 8.3.5–9.x are supported.
+Python 3.8+ and pytest 8.3.5–9.x are supported. Throng 0.0.9 or newer is required.
 
 ## Configuration
 
@@ -50,6 +50,7 @@ workers = 4
 check_fingerprints = false
 backend = "temporary_directory"
 distribution = "files"
+packages = []
 preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
 ```
 
@@ -67,6 +68,7 @@ pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
 | `python` | `--python` | Controller's `sys.executable` | Python executable available inside each isolate. |
 | `exclude` | `--exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
 | `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
+| `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
 The default exclusions are `.git/`, `.venv/`, `venv/`, `__pycache__/`,
 `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, `dist/`, and `mutants/`.
@@ -82,6 +84,33 @@ last flag wins. The environment accepts `true`/`false`; TOML uses booleans.
 
 ## Isolate preparation
 
+Use `packages` to ask the backend to install dependencies before running
+preparation commands and collecting tests inside each isolate:
+
+```bash
+pytest --packages='["requests"]'
+THRONGTEST_PACKAGES='["requests"]' pytest
+```
+
+The equivalent TOML setting is `packages = ["requests"]` in
+`[tool.throngtest]`. Each isolate receives the complete list once, in order.
+An explicit list replaces the lower-priority list; `[]` disables installation.
+No installation runs with `workers = 0`, `--collect-only`, or an empty test
+selection. The controller must already have the dependencies needed for its
+initial collection; packages are installed only in the isolates.
+
+Package syntax and the installation environment belong to the selected backend.
+The built-in backends run `pip install <specification>` using `pip` from `PATH`;
+`--python` selects the test interpreter and does **not** select that installer.
+These backends share the existing Python environment, so installation may
+modify it, and temporary-directory cleanup does not uninstall packages.
+To install into a specific interpreter, use an explicit preparation command
+such as `path/to/python -m pip install requests` and select that interpreter
+with `--python`. Successful installer output is managed by the backend;
+installation failures include available return codes, stdout, and stderr in
+the diagnostic, stop that isolate's preparation, and trigger cleanup and
+cancellation of outstanding work.
+
 Use `preparation` to generate files, install dependencies, or otherwise prepare
 each isolate before its pytest process starts:
 
@@ -90,18 +119,22 @@ pytest --preparation='["python scripts/prepare.py"]'
 THRONGTEST_PREPARATION='["python scripts/prepare.py"]' pytest
 ```
 
-Commands run in the listed order through `isolate.run`, in the same isolate as
-the tests. With the built-in backends they start at the project root, even when
+Commands run after package installation, in the listed order through
+`isolate.run`, in the same isolate as the tests. With the built-in backends
+they start at the project root, even when
 pytest is invoked from a subdirectory. Each call starts a separate process:
 file changes persist, but `cd`, `export`, and shell activation do not carry over
 to later commands or pytest. To select a prepared interpreter, set `python` to
 its executable path. Command syntax follows the chosen throng backend.
 
-A nonzero command exit code stops preparation of that isolate and prevents its
-tests from starting. The controller cancels outstanding work, cleans up the
+A failed command or a nonzero/missing exit code stops preparation of that
+isolate and prevents its tests from starting. The controller cancels outstanding work, cleans up the
 isolates, and exits with code 3, reporting the failed command, its exit code,
 and preparation output. Other isolates may already have started their tests.
 Successful preparation output is forwarded with the isolate's test results.
+Throngtest retains individual command results to preserve this output; it does
+not forward its `preparation` setting to the manager's `prepare` parameter,
+which discards successful command results.
 
 An explicit list replaces the lower-priority list; `[]` disables preparation.
 No preparation runs with `workers = 0`, `--collect-only`, or an empty test
@@ -187,7 +220,7 @@ The built-in backends have different guarantees:
   for each isolate and removes it after execution. Commands in different
   isolates can run concurrently.
 * `local` executes in the original project directory. Its isolates use separate
-  command processes, but throng 0.0.3 serializes commands belonging to one local
+  command processes, but throng serializes commands belonging to one local
   manager. Project file changes are visible to other subsets and remain after
   the run.
 
@@ -243,8 +276,8 @@ Workers return JSON reports through the command's stdout. No shared report
 directory, network listener, or pickle transport is required. Third-party
 throng backends must provide stdout and a process return code. The selected
 interpreter must have throngtest, pytest, the project's dependencies, and
-required pytest plugins available by the end of preparation. Throngtest only
-installs packages when explicitly instructed through preparation commands.
+required pytest plugins available by the end of preparation. Throngtest installs
+packages only when explicitly configured through `packages` or preparation commands.
 For a remote backend, set `--python` to an interpreter available in
 the isolate, such as `python`; its default is the controller's absolute
 `sys.executable` path, which is usually absent on a remote machine.
@@ -263,10 +296,13 @@ with fingerprint checks enabled, and incomplete report payloads fail with exit c
 worker interrupt propagates exit code 2.
 
 `-x` and `--maxfail` apply within each worker and to the aggregate reports. Once
-the controller observes the limit, it cancels outstanding commands through
-throng's cancellation token and cleans up isolates. Other subsets may already
-have executed additional tests. Cancellation responsiveness depends on the
-backend; throng's isolate creation itself does not accept a cancellation token.
+the controller observes the limit, it cancels outstanding work through
+throng's cancellation token and cleans up isolates. The same token is passed
+to isolate creation, package installation, preparation, test execution, and
+coverage export. Backend errors and controller interrupts also cancel pending
+work. Other subsets may already have executed additional tests. Responsiveness
+depends on the backend: snapshot reading has no cancellation token, and a
+backend may not interrupt allocation or lock waits immediately.
 
 The plugin rejects interactive `--pdb`, cache-based selection (`--lf`, `--ff`, `--nf`), and
 `--stepwise`. Other plugins must be importable in each worker, for example via
@@ -275,6 +311,28 @@ be transported. Plugins that implement custom test protocols, reruns, or their
 own output artifacts need separate compatibility work. The built-in throng
 backends reuse the interpreter environment; temporary file copies are not
 container or virtual-environment isolation.
+
+## Backend API
+
+Third-party backends must support throng 0.0.9. Factories should accept `path`,
+`exclude`, `prepare`, and `packages`, forwarding them to `AbstractManager`.
+Throngtest supplies the absolute project root as `path`, plus `exclude` and
+`packages`; the controller keeps its original working directory throughout
+execution. A backend must use the supplied path rather than the controller's cwd.
+
+Implement `AbstractManager._get(state, token=...)`,
+`AbstractIsolate._run(command, token=...)`, and
+`AbstractIsolate.install(*packages, token=...)`. Inherit the public `get()` and
+`run()` wrappers so throng handles package installation, native preparation,
+failure policies, and cleanup when initialization fails. Backends remain
+responsible for releasing partially allocated resources if `_get()` raises.
+Observe the supplied cancellation token during blocking operations.
+
+Preparation uses `run(..., exception=True)`. Test execution keeps the default
+`exception=False`, because pytest exit code 1 contains ordinary test failures
+and valid reports. The runner preserves a single scope for installation,
+preparation, pytest, and subsequent coverage export. Backend exceptions retain
+their cause chain and available command results in the final diagnostic.
 
 ## Development
 
@@ -292,7 +350,8 @@ The outer test session disables distribution; integration tests launch their
 own pytest sessions to exercise throngtest, including its default settings.
 The test suite includes actual subprocess runs through both built-in throng
 plugins, trace checks of their isolate APIs, complete/disjoint distribution,
-concurrency barriers, configuration precedence, preparation, native reports, cancellation,
+concurrency barriers, configuration precedence, package installation, preparation,
+native reports, cancellation during allocation and setup, interrupts,
 cleanup, and fault injection at the protocol/backend boundaries. The existing
 CI also checks statement and branch coverage across Python and OS versions.
 The CI workflow uses a startup hook to measure its own local subprocesses.
