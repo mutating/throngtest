@@ -46,7 +46,7 @@ class Settings(Storage):
     backend: str = Field('temporary_directory', validation={'backend must not be empty': nonempty})
     distribution: str = Field('tests', validation={'distribution must be tests or files': distribution})
     python: str = Field(default_factory=lambda: sys.executable, validation={'python must not be empty': nonempty})
-    exclude: List[str] = Field(default_factory=lambda: ['.git/', '.venv/', 'venv/', '__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/', 'build/', 'dist/', 'mutants/'])
+    exclude: List[str] = Field(default_factory=lambda: ['.git/', '.venv/', 'venv/', '__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/', 'build/', 'dist/'])
     preparation: List[str] = Field(default_factory=list, validation={'preparation commands must not be empty': lambda value: all(nonempty(item) for item in value)})
     packages: List[str] = Field(default_factory=list, validation={'package specifications must not be empty': lambda value: all(nonempty(item) for item in value)})
 

@@ -119,7 +119,7 @@ pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
 | `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
 The default exclusions are `.git/`, `.venv/`, `venv/`, `__pycache__/`,
-`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, `dist/`, and `mutants/`.
+`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, and `dist/`.
 An explicit exclusion list replaces the defaults. Patterns are interpreted by
 throng. Configurations are read afresh for each pytest session.
 
