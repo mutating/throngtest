@@ -79,7 +79,7 @@ pytest --isolates=2 --backend=local
 
 Installing the plugin enables distribution into up to four isolates by default.
 Use `--isolates=0` to disable it and run ordinary pytest.
-Python 3.8+ and pytest 8.3.5–9.x are supported. Throng 0.0.9 or newer is required.
+Python 3.8+ and pytest 7.0.0+ are supported. Pluggy 1.2.0+ and throng 0.0.9+ are required.
 
 -------------------------
 
