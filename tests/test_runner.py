@@ -221,15 +221,17 @@ def test_interrupt_cancels_token_without_changing_cwd(pytester: pytest.Pytester,
     monkeypatch.setattr('throngtest.runner.replay', lambda *_args: None)
     monkeypatch.chdir(tmp_path)
     chdir = Mock(side_effect=AssertionError('controller must not change cwd'))
-    monkeypatch.setattr('throngtest.runner.os.chdir', chdir)
-    settings = Settings(_sources=[])
-    settings.isolates = 1
-    with pytest.raises(session.Interrupted, match='requested stop'):
-        Runner(settings).pytest_runtestloop(session)
-    assert Path.cwd() == tmp_path
-    assert len(token_seen) == 1
-    assert not token_seen[0]
-    chdir.assert_not_called()
+    # Restore chdir before older pytester versions use it during teardown.
+    with monkeypatch.context() as patch:
+        patch.setattr('throngtest.runner.os.chdir', chdir)
+        settings = Settings(_sources=[])
+        settings.isolates = 1
+        with pytest.raises(session.Interrupted, match='requested stop'):
+            Runner(settings).pytest_runtestloop(session)
+        assert Path.cwd() == tmp_path
+        assert len(token_seen) == 1
+        assert not token_seen[0]
+        chdir.assert_not_called()
 
 
 def xdist_report(nodeid: str, when: str, worker: str = 'gw0', outcome: str = 'passed') -> Dict[str, object]:
