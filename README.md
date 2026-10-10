@@ -381,27 +381,3 @@ Preparation uses `run(..., exception=True)`. Test execution keeps the default
 and valid reports. The runner preserves a single scope for installation,
 preparation, pytest, and subsequent coverage export. Backend exceptions retain
 their cause chain and available command results in the final diagnostic.
-
-## Development
-
-```bash
-python -m pip install -r requirements_dev.txt -e .
-python -m pytest --isolates=0
-ruff check throngtest tests
-mypy --strict --disallow-any-decorated --disallow-any-explicit \
-  --disallow-any-expr --disallow-any-generics --disallow-any-unimported \
-  --disallow-subclassing-any --warn-return-any throngtest
-mypy tests
-```
-
-The outer test session disables distribution; integration tests launch their
-own pytest sessions to exercise throngtest, including its default settings.
-The test suite includes actual subprocess runs through both built-in throng
-plugins, trace checks of their isolate APIs, complete/disjoint distribution,
-concurrency barriers, configuration precedence, package installation, preparation,
-native reports, cancellation during allocation and setup, interrupts,
-cleanup, and fault injection at the protocol/backend boundaries. The existing
-CI also checks statement and branch coverage across Python and OS versions.
-The CI workflow uses a startup hook to measure its own local subprocesses.
-Integration tests also verify that the coverage agents transfer data from
-temporary isolates, including when pytest-xdist runs inside them.
