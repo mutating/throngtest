@@ -10,8 +10,8 @@ def run(pytester: pytest.Pytester, backend: str, *arguments: str) -> pytest.RunR
     return pytester.runpytest_subprocess('--isolates=2', f'--backend={backend}', *arguments, timeout=30)
 
 
-@pytest.mark.parametrize(('arguments', 'workers'), [((), 4), (('--isolates=2',), 2), (('--isolates', '2'), 2), (('--check-fingerprints',), 4)])
-def test_real_isolates_execute_every_test_once(pytester: pytest.Pytester, backend: str, tmp_path: Path, arguments: tuple, workers: int) -> None:
+@pytest.mark.parametrize(('arguments', 'isolates'), [((), 4), (('--isolates=2',), 2), (('--isolates', '2'), 2), (('--check-fingerprints',), 4)])
+def test_real_isolates_execute_every_test_once(pytester: pytest.Pytester, backend: str, tmp_path: Path, arguments: tuple, isolates: int) -> None:
     """Execute every test once through the selected throng backend and isolate count.
 
     Wrappers observe the real backend run methods, while external files record
@@ -51,14 +51,14 @@ def test_real_isolates_execute_every_test_once(pytester: pytest.Pytester, backen
     records = [json.loads((tmp_path / str(index)).read_text()) for index in range(8)]
     dispatched = [path.read_text() for path in tmp_path.glob('dispatch-*')]
     expected_class = 'LocalIsolate' if backend == 'local' else 'TemporaryDirectoryIsolate'
-    assert dispatched == [expected_class] * workers
-    assert len({record['pid'] for record in records}) == workers
+    assert dispatched == [expected_class] * isolates
+    assert len({record['pid'] for record in records}) == isolates
     directories = {record['cwd'] for record in records}
     if backend == 'local':
         assert directories == {str(pytester.path.resolve())}
         assert (pytester.path / 'isolate-marker').exists()
     else:
-        assert len(directories) == workers
+        assert len(directories) == isolates
         assert all(not Path(directory).exists() for directory in directories)
         assert not (pytester.path / 'isolate-marker').exists()
 
@@ -324,8 +324,8 @@ def test_ini_and_environment_addopts(pytester: pytest.Pytester, backend: str, mo
 
 def test_enable_using_skelet_sources(pytester: pytest.Pytester, backend: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Configure isolate execution through TOML and environment values without CLI options."""
-    pytester.makepyprojecttoml(f'[tool.throngtest]\nworkers = 1\nbackend = "{backend}"\ndistribution = "files"')
-    monkeypatch.setenv('THRONGTEST_WORKERS', '2')
+    pytester.makepyprojecttoml(f'[tool.throngtest]\nisolates = 1\nbackend = "{backend}"\ndistribution = "files"')
+    monkeypatch.setenv('THRONGTEST_ISOLATES', '2')
     pytester.makepyfile(test_a='def test_a(): pass', test_b='def test_b(): pass')
     result = pytester.runpytest_subprocess()
     result.assert_outcomes(passed=2)

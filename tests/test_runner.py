@@ -37,7 +37,7 @@ def test_relocate_paths(tmp_path: Path) -> None:
     assert relocate(preparation, root, tmp_path, root) == preparation
 
 
-@pytest.mark.parametrize('option', ['--isolates', '--backend', '--distribution', '--python', '--exclude', '--preparation'])
+@pytest.mark.parametrize('option', ['--isolates', '--backend', '--distribution', '--python', '--exclude', '--preparation', '--packages'])
 def test_worker_arguments_preserve_unprefixed_option_values(pytester: pytest.Pytester, tmp_path: Path, option: str) -> None:
     """Keep isolate option values intact with both CLI argument spellings.
 
@@ -62,14 +62,14 @@ def test_isolate_errors_are_reported_and_cleanup_attempted(stage: str) -> None:
     to check the cleanup obligations at each point in the isolate lifecycle.
     """
     manager = Mock()
-    scope = manager.scope
+    scope = manager.scope.return_value
     scope.__enter__ = Mock()
     scope.__exit__ = Mock(return_value=False)
     isolate = scope.__enter__.return_value
     target = {'enter': scope.__enter__, 'run': isolate.run, 'exit': scope.__exit__}[stage]
     target.side_effect = RuntimeError('backend problem')
     with pytest.raises(WorkerError) as caught:
-        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken())
+        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken(), Path.cwd())
     phase = {'enter': 'acquiring isolate', 'run': 'running pytest worker', 'exit': 'releasing isolate'}[stage]
     assert f'{phase} failed: RuntimeError: backend problem' in str(caught.value)
     if stage != 'enter':
@@ -84,15 +84,15 @@ def test_backend_error_preserves_underlying_connection_failure() -> None:
     only the final WorkerError message.
     """
     manager = Mock()
-    manager.scope.__enter__ = Mock()
-    manager.scope.__exit__ = Mock(return_value=False)
+    manager.scope.return_value.__enter__ = Mock()
+    manager.scope.return_value.__exit__ = Mock(return_value=False)
     failure = RuntimeError('The connection was lost; commands are never replayed.')
     failure.__cause__ = OSError('socket is already closed')
-    manager.scope.__enter__.side_effect = failure
+    manager.scope.return_value.__enter__.side_effect = failure
     settings = Settings(_sources=[])
     settings.backend = 'fission'
     with pytest.raises(WorkerError) as caught:
-        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken())
+        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken(), Path.cwd())
     message = str(caught.value)
     assert 'isolate 1 (backend=fission): acquiring isolate failed' in message
     assert 'RuntimeError: The connection was lost; commands are never replayed.' in message
@@ -102,10 +102,10 @@ def test_backend_error_preserves_underlying_connection_failure() -> None:
 def test_exit_code_mismatch() -> None:
     """Reject a worker response whose exit code contradicts the process exit status."""
     manager = MagicMock()
-    manager.scope.__enter__.return_value.run.return_value = SimpleNamespace(stdout='marker:' + encode({'version': 1, 'exitcode': 0}), stderr='diagnostic', returncode=1)
+    manager.scope.return_value.__enter__.return_value.run.return_value = SimpleNamespace(stdout='marker:' + encode({'version': 1, 'exitcode': 0}), stderr='diagnostic', returncode=1)
     with pytest.raises(WorkerError, match='exit code does not match'):
-        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken())
-    manager.scope.__exit__.assert_called_once()
+        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken(), Path.cwd())
+    manager.scope.return_value.__exit__.assert_called_once()
 
 
 def test_collection_diagnostic_retains_output_without_encoded_response() -> None:
@@ -116,11 +116,11 @@ def test_collection_diagnostic_retains_output_without_encoded_response() -> None
     """
     manager = MagicMock()
     data: Dict[str, object] = {'version': 1, 'exitcode': 4, 'collection': ['test.py::new']}
-    manager.scope.__enter__.return_value.run.return_value = SimpleNamespace(
+    manager.scope.return_value.__enter__.return_value.run.return_value = SimpleNamespace(
         stdout='before\n\nmarker:' + encode(data) + '\nafter\n', stderr='stderr diagnostic', returncode=4,
     )
     with pytest.raises(WorkerError) as caught:
-        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken(), nodeids=['test.py::old'])
+        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken(), Path.cwd(), nodeids=['test.py::old'])
     diagnostic = str(caught.value)
     assert caught.value.exitcode == 3
     assert 'controller: 1 selected tests\nisolate: 1 selected tests' in diagnostic
@@ -135,11 +135,11 @@ def test_collection_diagnostic_retains_output_without_encoded_response() -> None
 def test_malformed_collection_is_reported(collection: object) -> None:
     """Reject worker collection data that is not a list of string identifiers."""
     manager = MagicMock()
-    manager.scope.__enter__.return_value.run.return_value = SimpleNamespace(
+    manager.scope.return_value.__enter__.return_value.run.return_value = SimpleNamespace(
         stdout='marker:' + encode({'version': 1, 'exitcode': 4, 'collection': collection}), stderr='', returncode=4,
     )
     with pytest.raises(WorkerError, match='malformed test collection'):
-        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken())
+        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), Settings(_sources=[]), SimpleToken(), Path.cwd())
 
 
 def report_data(when: Literal['setup', 'call', 'teardown'], outcome: Literal['passed', 'failed', 'skipped'] = 'passed', nodeid: str = 'test.py::test_a') -> Dict[str, object]:
@@ -197,12 +197,12 @@ def test_unchecked_reports_still_require_valid_assignment(session: pytest.Sessio
         replay(session, {'assigned': assigned}, None)
 
 
-def test_interrupt_cancels_token_and_restores_cwd(pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Cancel dispatched work and restore the invocation directory on a requested stop.
+def test_interrupt_cancels_token_without_changing_cwd(pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Cancel dispatched work without changing the controller's working directory.
 
     A stub executor records the real cancellation token, and report replay is
     bypassed to isolate runner cleanup. The invocation directory deliberately
-    differs from the project root so restoration is observable.
+    differs from the project root; any chdir is forbidden, even temporarily.
     """
     config = pytester.parseconfigure()
     session = pytest.Session.from_config(config)
@@ -211,20 +211,27 @@ def test_interrupt_cancels_token_and_restores_cwd(pytester: pytest.Pytester, mon
     config.stash[ARGUMENTS] = []
     token_seen: List[SimpleToken] = []
 
-    def fake_execute(_manager: AbstractManager, _request: Request, _settings: Settings, token: SimpleToken, _nodeids: List[str]) -> Dict[str, object]:
+    def fake_execute(manager: AbstractManager, _request: Request, _settings: Settings, token: SimpleToken, root: Path, _nodeids: List[str]) -> Dict[str, object]:
+        assert manager.path == root == config.rootpath
+        assert Path.cwd() == tmp_path
         token_seen.append(token)
         return {'finished': ['test.py::test_a']}
 
     monkeypatch.setattr('throngtest.runner.execute', fake_execute)
     monkeypatch.setattr('throngtest.runner.replay', lambda *_args: None)
     monkeypatch.chdir(tmp_path)
-    settings = Settings(_sources=[])
-    settings.workers = 1
-    with pytest.raises(session.Interrupted, match='requested stop'):
-        Runner(settings).pytest_runtestloop(session)
-    assert Path.cwd() == tmp_path
-    assert len(token_seen) == 1
-    assert not token_seen[0]
+    chdir = Mock(side_effect=AssertionError('controller must not change cwd'))
+    # Restore chdir before older pytester versions use it during teardown.
+    with monkeypatch.context() as patch:
+        patch.setattr('throngtest.runner.os.chdir', chdir)
+        settings = Settings(_sources=[])
+        settings.isolates = 1
+        with pytest.raises(session.Interrupted, match='requested stop'):
+            Runner(settings).pytest_runtestloop(session)
+        assert Path.cwd() == tmp_path
+        assert len(token_seen) == 1
+        assert not token_seen[0]
+        chdir.assert_not_called()
 
 
 def xdist_report(nodeid: str, when: str, worker: str = 'gw0', outcome: str = 'passed') -> Dict[str, object]:

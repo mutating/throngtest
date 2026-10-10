@@ -12,7 +12,14 @@ from uuid import uuid4
 
 import pytest
 from cantok import SimpleToken
-from throng import AbstractManager, throng
+from throng import AbstractIsolate, AbstractManager, throng
+from throng.abstracts.results import RunResultProtocol
+from throng.errors import (
+    CannotInstallDependencyError,
+    InterruptedInstallationError,
+    NotSuccessfulRunError,
+    PreparationCommandFailedError,
+)
 
 from throngtest.coverage import coverage_agents
 from throngtest.coverage_transport import receive
@@ -21,7 +28,7 @@ from throngtest.protocol import Request, WorkerError, read_response
 from throngtest.settings import ARGUMENTS, Settings
 from throngtest.xdist import NESTED
 
-VALUE_OPTIONS = frozenset(('--isolates', '--backend', '--distribution', '--python', '--exclude', '--preparation'))
+VALUE_OPTIONS = frozenset(('--isolates', '--backend', '--distribution', '--python', '--exclude', '--preparation', '--packages'))
 
 
 def relocate(argument: str, root: Path, invocation: Path, directory: Path) -> str:
@@ -91,38 +98,55 @@ def worker_arguments(config: pytest.Config, root: Path, invocation: Path, direct
 
 def backend_error(error: Exception, stage: str, request: Request, settings: Settings, preparation_output: str) -> WorkerError:
     """Keep backend phase and exception chain visible in pytest's final exit."""
-    detail = str(error)
-    if not isinstance(error, WorkerError):
-        detail = f'{type(error).__name__}: {error}'
-        cause = error.__cause__
-        while cause is not None:
+    if stage == 'acquiring isolate':
+        if isinstance(error, InterruptedInstallationError):
+            stage = 'installing packages'
+        elif isinstance(error, PreparationCommandFailedError):
+            stage = 'preparing isolate'
+    detail = str(error) if isinstance(error, WorkerError) else f'{type(error).__name__}: {error}'
+    cause: Optional[BaseException] = error
+    while cause is not None:
+        if cause is not error:
             detail += f'\ncaused by {type(cause).__name__}: {cause}'
-            cause = cause.__cause__
+        if isinstance(cause, (NotSuccessfulRunError, CannotInstallDependencyError)) and cause.result is not None:
+            result = cause.result
+            detail += f'\ncommand return code: {result.returncode}\nstdout:\n{result.stdout or ""}\nstderr:\n{result.stderr or ""}'
+        cause = cause.__cause__
     message = f'isolate {request.shard + 1} (backend={settings.backend}): {stage} failed: {detail}'
     if preparation_output:
         message += f'\npreparation output:\n{preparation_output}'
     return WorkerError(message, exitcode=error.exitcode if isinstance(error, WorkerError) else 3)
 
 
-def execute(manager: AbstractManager, request: Request, settings: Settings, token: SimpleToken, nodeids: Sequence[str] = ()) -> Dict[str, object]:
+def prepare_command(isolate: AbstractIsolate, instruction: str, token: SimpleToken, label: str) -> RunResultProtocol:
+    """Require a successful command while retaining its result in the error chain."""
+    try:
+        result = isolate.run(instruction, token=token, exception=True)
+        # Pytest preparation requires exit code zero even if a backend's
+        # success flag has different semantics.
+        if result.returncode != 0:
+            raise NotSuccessfulRunError('Preparation command returned a nonzero or missing exit code.', result)
+    except NotSuccessfulRunError as error:
+        raise WorkerError(f'{label} failed with exit code {error.result.returncode}: {instruction}') from error
+    except Exception as error:
+        raise WorkerError(f'{label} could not execute: {instruction}\n{error}') from error
+    return result
+
+
+def execute(manager: AbstractManager, request: Request, settings: Settings, token: SimpleToken, root: Path, nodeids: Sequence[str] = ()) -> Dict[str, object]:  # noqa: PLR0913
     command = shlex.join([settings.python, '-c', 'from throngtest.worker import main; import sys; main(sys.argv[1])', request.pack()])
     preparation_output = ''
     stage = 'acquiring isolate'
     try:
-        with manager.scope as isolate:
+        with manager.scope(token=token) as isolate:
+            # Manager-level prepare discards successful command output. Keep
+            # each result here so preparation diagnostics survive later failures.
             for index, instruction in enumerate(settings.preparation, 1):
                 stage = f'running preparation command {index}'
-                try:
-                    prepared = isolate.run(instruction, token=token)
-                except Exception as error:
-                    raise WorkerError(f'isolate {request.shard + 1}: preparation command {index} could not execute: {instruction}\n{error}') from error
+                prepared = prepare_command(isolate, instruction, token, f'isolate {request.shard + 1}: preparation command {index}')
                 preparation_output += (prepared.stdout or '') + (prepared.stderr or '')
-                if prepared.returncode != 0:
-                    raise WorkerError(
-                        f'isolate {request.shard + 1}: preparation command {index} failed '
-                        f'with exit code {prepared.returncode}: {instruction}',
-                    )
             stage = 'running pytest worker'
+            # A pytest exit code of 1 carries test failures and valid reports.
             result = isolate.run(command, token=token)
             if request.coverage_agents and result.returncode in (0, 1) and request.marker in [line[:len(request.marker)] for line in (result.stdout or '').splitlines()]:
                 stage = 'exporting coverage'
@@ -136,7 +160,7 @@ def execute(manager: AbstractManager, request: Request, settings: Settings, toke
     stdout = result.stdout or ''
     try:
         if request.coverage_agents and result.returncode in (0, 1) and request.marker in [line[:len(request.marker)] for line in stdout.splitlines()]:
-            receive(coverage_payload, request.coverage_targets or {}, Path.cwd())
+            receive(coverage_payload, request.coverage_targets or {}, root)
         response = read_response(stdout, request.marker)
         # The decoded protocol is represented by the diagnostic below; avoid
         # flooding errors with its base64 payload. Preserve unrelated output.
@@ -271,7 +295,7 @@ class Runner:
         self.settings = settings
 
     def pytest_report_header(self) -> str:
-        return f'throngtest: {self.settings.workers} isolates, backend={self.settings.backend}, distribution={self.settings.distribution}'
+        return f'throngtest: {self.settings.isolates} isolates, backend={self.settings.backend}, distribution={self.settings.distribution}'
 
     @pytest.hookimpl(tryfirst=True)  # type: ignore[misc]  # pluggy's decorator exposes Any in its generic bound.
     def pytest_runtestloop(self, session: pytest.Session) -> bool:
@@ -287,17 +311,13 @@ class Runner:
             directory = Path()
         arguments = worker_arguments(session.config, root, invocation, directory)
         nodeids = [item.nodeid for item in session.items]
-        shards = partition(nodeids, self.settings.workers, self.settings.distribution)
+        shards = partition(nodeids, self.settings.isolates, self.settings.distribution)
         collection_fingerprint = fingerprint(nodeids) if self.settings.check_fingerprints else None
         enabled, targets, configurations = coverage_plan(session.config, self.settings.backend)
         completed = 0
         token = SimpleToken()
-        previous = Path.cwd()
         try:
-            # throng's built-in archive backend expects a relative source path;
-            # local also uses the controller's cwd. Never chdir in worker threads.
-            os.chdir(root)
-            managers = throng('.', exclude=self.settings.exclude)
+            managers = throng(root, exclude=self.settings.exclude, packages=self.settings.packages)
             if self.settings.backend not in managers:
                 raise pytest.UsageError(f'throngtest: unknown backend {self.settings.backend!r}; available: {", ".join(sorted(managers))}')
             manager = managers[self.settings.backend]
@@ -308,7 +328,7 @@ class Runner:
                             arguments, collection_fingerprint, len(shards),
                             self.settings.distribution, index, f'THRONGTEST_{uuid4().hex}:', str(directory),
                             enabled, targets, configurations,
-                        ), self.settings, token, nodeids): shard
+                        ), self.settings, token, root, nodeids): shard
                         for index, shard in enumerate(shards)
                     }
                     for future in as_completed(futures):
@@ -324,8 +344,6 @@ class Runner:
                     token.cancel()
         except WorkerError as error:
             pytest.exit(f'throngtest: {error}', returncode=error.exitcode)
-        finally:
-            os.chdir(previous)
         if not completed:
             session.testscollected = 0
         return True

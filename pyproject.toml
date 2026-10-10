@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "throngtest"
-version = "0.0.2"
+version = "0.0.3"
 authors = [
   { name="Evgeniy Blinov", email="zheni-b@yandex.ru" },
 ]
@@ -12,8 +12,9 @@ description = 'Distributed pytest execution in isolated environments'
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    'pytest>=8.3.5,<10',
-    'throng>=0.0.3',
+    'pytest>=7.0.0',
+    'pluggy>=1.2.0',  # Transitive pytest dependency; pytest 7.0 + pluggy 1.0 failed on wrapper=True in compatibility tests.
+    'throng>=0.0.9',
     'skelet>=0.0.21',
     'pristan>=0.0.24',
 ]

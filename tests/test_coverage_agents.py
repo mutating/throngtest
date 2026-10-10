@@ -357,17 +357,23 @@ def test_coverage_export_is_received_before_replay(monkeypatch: pytest.MonkeyPat
     """Fetch coverage after passing or failing tests, before replaying reports."""
     manager = MagicMock()
     request = Request([], None, 1, 'tests', 0, 'marker:', '.', ['provider'], {'provider': str(tmp_path / '.coverage')})
-    manager.scope.__enter__.return_value.run.side_effect = [
+    manager.scope.return_value.__enter__.return_value.run.side_effect = [
         SimpleNamespace(stdout='before\nmarker:' + encode({'version': 1, 'exitcode': exitcode}) + '\n', stderr='', returncode=exitcode),
         SimpleNamespace(stdout='marker:' + encode({'version': 1, 'root': '/remote', 'files': {'provider': ['encoded']}}), stderr='', returncode=0),
     ]
     received: List[object] = []
     monkeypatch.setattr('throngtest.runner.receive', lambda payload, targets, root: received.append((payload, targets, root)))
-    response = execute(manager, request, Settings(_sources=[]), SimpleToken())
+    token = SimpleToken()
+    response = execute(manager, request, Settings(_sources=[]), token, tmp_path)
     assert response['exitcode'] == exitcode
     assert response['output'] == 'before'
-    assert received == [({'version': 1, 'root': '/remote', 'files': {'provider': ['encoded']}}, request.coverage_targets, Path.cwd())]
-    assert manager.scope.__enter__.return_value.run.call_count == 2
+    assert tmp_path != Path.cwd()
+    assert received == [({'version': 1, 'root': '/remote', 'files': {'provider': ['encoded']}}, request.coverage_targets, tmp_path)]
+    assert manager.scope.return_value.__enter__.return_value.run.call_count == 2
+    manager.scope.assert_called_once_with(token=token)
+    for call in manager.scope.return_value.__enter__.return_value.run.call_args_list:
+        assert call.kwargs['token'] is token
+        assert not call.kwargs.get('exception', False)
 
 
 @pytest.mark.parametrize('remote_name', ['/remote/project/app.py', r'C:\remote\project\app.py'])
@@ -493,23 +499,26 @@ def test_bad_coverage_database_is_released_before_cleanup(tmp_path: Path, monkey
 def test_export_failure_is_reported() -> None:
     """Fail the run when the isolate cannot return coverage after its tests."""
     manager = MagicMock()
-    manager.scope.__enter__.return_value.run.side_effect = [
+    manager.scope.return_value.__enter__.return_value.run.side_effect = [
         SimpleNamespace(stdout='marker:', stderr='', returncode=0),
         SimpleNamespace(stdout='', stderr='transfer failed', returncode=7),
     ]
     request = Request([], None, 1, 'tests', 0, 'marker:', '.', ['provider'], {'provider': '.coverage'})
     with pytest.raises(WorkerError, match='transfer failed'):
-        execute(manager, request, Settings(_sources=[]), SimpleToken())
+        execute(manager, request, Settings(_sources=[]), SimpleToken(), Path.cwd())
 
 
 @pytest.mark.parametrize('backend', ['local', 'temporary_directory'])
 @pytest.mark.parametrize('provider', ['coverage', 'pytest-cov'])
-def test_real_coverage_reaches_controller(pytester: pytest.Pytester, backend: str, provider: str) -> None:
+@pytest.mark.parametrize('nested', [False, True])
+def test_real_coverage_reaches_controller(pytester: pytest.Pytester, backend: str, provider: str, nested: bool) -> None:
     """Combine both isolate subsets after temporary copies are destroyed.
 
     Child processes do not inherit the repository's coverage startup or data
     path. Each branch is exercised only in an isolate, so 100% proves that its
     database crossed the command-output transport and was remapped correctly.
+    A nested invocation distinguishes the controller's coverage data directory
+    from the project root used for remapping sources.
     """
     pytester.makepyfile(app='''
         def classify(value):
@@ -532,17 +541,27 @@ def test_real_coverage_reaches_controller(pytester: pytest.Pytester, backend: st
     environment = dict(os.environ)
     environment.pop('COVERAGE_PROCESS_START', None)
     environment.pop('COVERAGE_FILE', None)
+    environment['COVERAGE_RCFILE'] = str(pytester.path / 'pyproject.toml')
+    invocation = pytester.path
+    if nested:
+        invocation = pytester.path / 'sub directory'
+        invocation.mkdir()
+        # Throng snapshots files, so keep the invocation directory in the copy.
+        (invocation / 'marker').touch()
     arguments = [sys.executable, '-m', 'coverage', 'run', '-m', 'pytest'] if provider == 'coverage' else [sys.executable, '-m', 'pytest', '--cov=app', '--cov-branch', '--cov-fail-under=100']
-    result = subprocess.run([*arguments, '-q', '--isolates=2', f'--backend={backend}'], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
+    result = subprocess.run([*arguments, '-q', '--isolates=2', f'--backend={backend}', str(pytester.path)], cwd=invocation, env=environment, text=True, capture_output=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
     if provider == 'coverage':
-        combined = subprocess.run([sys.executable, '-m', 'coverage', 'combine', '-q'], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
+        combined = subprocess.run([sys.executable, '-m', 'coverage', 'combine', '-q'], cwd=invocation, env=environment, text=True, capture_output=True, check=False)
         assert combined.returncode == 0, combined.stdout + combined.stderr
-    report = subprocess.run([sys.executable, '-m', 'coverage', 'json', '-o', 'report.json'], cwd=pytester.path, env=environment, text=True, capture_output=True, check=False)
+    report = subprocess.run([sys.executable, '-m', 'coverage', 'json', '-o', 'report.json'], cwd=invocation, env=environment, text=True, capture_output=True, check=False)
     assert report.returncode == 0, report.stdout + report.stderr
-    data = json.loads((pytester.path / 'report.json').read_text())
+    data = json.loads((invocation / 'report.json').read_text())
     assert data['totals']['percent_covered'] == 100
-    assert data['files']['app.py']['missing_branches'] == []
+    assert len(data['files']) == 1
+    source, details = next(iter(data['files'].items()))
+    assert (invocation / source).resolve() == pytester.path / 'app.py'
+    assert details['missing_branches'] == []
 
 
 def test_pytest_cov_combines_nested_xdist_isolates(pytester: pytest.Pytester) -> None:

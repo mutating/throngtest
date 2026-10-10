@@ -3,10 +3,14 @@ import shlex
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
 from cantok import SimpleToken
+from throng import throng
+from throng.abstracts.results import SimpleRunResult
+from throng.errors import CannotInstallDependencyError, NotSuccessfulRunError
 
 from throngtest.protocol import Request, WorkerError, encode
 from throngtest.runner import execute
@@ -174,17 +178,19 @@ def test_preparation_cleanup_on_backend_error_and_worker_crash(failure: object) 
     Every dispatched command must receive the same cancellation token.
     """
     manager = MagicMock()
-    isolate = manager.scope.__enter__.return_value
+    isolate = manager.scope.return_value.__enter__.return_value
     isolate.run.side_effect = [SimpleNamespace(stdout='preparation output', stderr=None, returncode=0), failure]
     token = SimpleToken()
     commands = ['prepare', 'prepare again'] if isinstance(failure, Exception) else ['prepare']
     settings = Settings(_sources=[])
     settings.preparation = commands
     with pytest.raises(WorkerError) as caught:
-        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), settings, token)
+        execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), settings, token, Path.cwd())
     assert isolate.run.call_count == 2
     assert all(call.kwargs['token'] is token for call in isolate.run.call_args_list)
-    manager.scope.__exit__.assert_called_once()
+    manager.scope.assert_called_once_with(token=token)
+    assert isolate.run.call_args_list[0].kwargs['exception'] is True
+    manager.scope.return_value.__exit__.assert_called_once()
     assert 'preparation output' in str(caught.value)
     if isinstance(failure, Exception):
         assert 'preparation command 2 could not execute: prepare again' in str(caught.value)
@@ -193,16 +199,104 @@ def test_preparation_cleanup_on_backend_error_and_worker_crash(failure: object) 
         assert 'worker terminated without a result' in str(caught.value)
 
 
+@pytest.mark.parametrize('returncode', [0, 9, None])
+@pytest.mark.parametrize('output', [False, True])
+def test_preparation_failure_retains_result_and_previous_output(returncode: Optional[int], output: bool) -> None:
+    """Use throng's success policy even for exit zero; retain failure result fields.
+
+    A failed or cancelled command can have exit zero or no process exit code.
+    The earlier successful output, failing command index, optional streams,
+    and cleanup must survive the exception-based API in every case.
+    """
+    manager = MagicMock()
+    isolate = manager.scope.return_value.__enter__.return_value
+    failure = SimpleRunResult(False, returncode, 'failed stdout' if output else None, 'failed stderr' if output else None)
+    isolate.run.side_effect = [SimpleRunResult(True, 0, 'earlier output'), NotSuccessfulRunError('backend failure', failure)]
+    settings = Settings(_sources=[])
+    settings.preparation = ['first', 'second', 'must not run']
+    with pytest.raises(WorkerError) as caught:
+        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken(), Path.cwd())
+    message = str(caught.value)
+    assert f'preparation command 2 failed with exit code {returncode}: second' in message
+    assert 'earlier output' in message
+    assert 'NotSuccessfulRunError: backend failure' in message
+    assert f'command return code: {returncode}' in message
+    if output:
+        assert 'stdout:\nfailed stdout\nstderr:\nfailed stderr' in message
+    else:
+        assert 'stdout:\n\nstderr:\n' in message
+    assert isolate.run.call_count == 2
+    assert all(call.kwargs['exception'] is True for call in isolate.run.call_args_list)
+    manager.scope.return_value.__exit__.assert_called_once()
+
+
+@pytest.mark.parametrize('returncode', [7, None])
+def test_preparation_requires_exit_zero_despite_backend_success(returncode: Optional[int]) -> None:
+    """Keep the explicit exit-code contract for backends with a permissive success flag."""
+    manager = MagicMock()
+    isolate = manager.scope.return_value.__enter__.return_value
+    isolate.run.return_value = SimpleRunResult(True, returncode, 'backend stdout', 'backend stderr')
+    settings = Settings(_sources=[])
+    settings.preparation = ['prepare']
+    with pytest.raises(WorkerError) as caught:
+        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken(), Path.cwd())
+    assert f'failed with exit code {returncode}' in str(caught.value)
+    assert 'backend stdout' in str(caught.value)
+    assert 'backend stderr' in str(caught.value)
+    isolate.run.assert_called_once()
+    manager.scope.return_value.__exit__.assert_called_once()
+
+
+@pytest.mark.parametrize('with_result', [False, True])
+def test_preparation_preserves_nested_installation_errors(with_result: bool) -> None:
+    """Retain result-bearing causes through both third-party and project wrappers."""
+    failure = CannotInstallDependencyError('missing dependency', SimpleRunResult(False, 8, 'install stdout', 'install stderr') if with_result else None)
+    error = RuntimeError('remote setup failed')
+    error.__cause__ = failure
+    manager = MagicMock()
+    manager.scope.return_value.__enter__.return_value.run.side_effect = error
+    settings = Settings(_sources=[])
+    settings.preparation = ['prepare']
+    with pytest.raises(WorkerError) as caught:
+        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken(), Path.cwd())
+    message = str(caught.value)
+    assert 'preparation command 1 could not execute: prepare' in message
+    assert 'caused by RuntimeError: remote setup failed' in message
+    assert 'caused by CannotInstallDependencyError: missing dependency' in message
+    assert ('command return code: 8' in message) == with_result
+    assert ('install stdout' in message) == with_result
+    assert ('install stderr' in message) == with_result
+
+
 def test_preparation_accepts_commands_without_output() -> None:
     """Accept successful preparation whose stdout and stderr are both None."""
     manager = MagicMock()
-    isolate = manager.scope.__enter__.return_value
+    isolate = manager.scope.return_value.__enter__.return_value
     isolate.run.side_effect = [
         SimpleNamespace(stdout=None, stderr=None, returncode=0),
         SimpleNamespace(stdout='marker:' + encode({'version': 1, 'exitcode': 0}), stderr=None, returncode=0),
     ]
     settings = Settings(_sources=[])
     settings.preparation = ['prepare']
-    result = execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken())
+    result = execute(manager, Request([], '', 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken(), Path.cwd())
     assert result['output'] == ''
-    manager.scope.__exit__.assert_called_once()
+    manager.scope.return_value.__exit__.assert_called_once()
+
+
+def test_native_backend_preparation_error_retains_result(tmp_path: Path, backend: str) -> None:
+    """Diagnose a backend's own prepare phase before the project's scope can open."""
+    directory = tmp_path / 'isolate-directory'
+    preparation = python_command(f'from pathlib import Path; import sys; Path({str(directory)!r}).write_text(str(Path.cwd())); print("native stdout"); print("native stderr", file=sys.stderr); sys.exit(12)')
+    manager = throng(tmp_path, prepare=[preparation])[backend]
+    settings = Settings(_sources=[])
+    settings.backend = backend
+    with pytest.raises(WorkerError) as caught:
+        execute(manager, Request([], None, 1, 'tests', 0, 'marker:', '.'), settings, SimpleToken(), tmp_path)
+    message = str(caught.value)
+    assert f'isolate 1 (backend={backend}): preparing isolate failed' in message
+    assert 'PreparationCommandFailedError' in message
+    assert 'NotSuccessfulRunError' in message
+    assert 'command return code: 12' in message
+    assert 'stdout:\nnative stdout\n' in message
+    assert 'stderr:\nnative stderr\n' in message
+    assert Path(directory.read_text()).exists() == (backend == 'local')
