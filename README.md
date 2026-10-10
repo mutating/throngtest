@@ -359,25 +359,3 @@ be transported. Plugins that implement custom test protocols, reruns, or their
 own output artifacts need separate compatibility work. The built-in throng
 backends reuse the interpreter environment; temporary file copies are not
 container or virtual-environment isolation.
-
-## Backend API
-
-Third-party backends must support throng 0.0.9. Factories should accept `path`,
-`exclude`, `prepare`, and `packages`, forwarding them to `AbstractManager`.
-Throngtest supplies the absolute project root as `path`, plus `exclude` and
-`packages`; the controller keeps its original working directory throughout
-execution. A backend must use the supplied path rather than the controller's cwd.
-
-Implement `AbstractManager._get(state, token=...)`,
-`AbstractIsolate._run(command, token=...)`, and
-`AbstractIsolate.install(*packages, token=...)`. Inherit the public `get()` and
-`run()` wrappers so throng handles package installation, native preparation,
-failure policies, and cleanup when initialization fails. Backends remain
-responsible for releasing partially allocated resources if `_get()` raises.
-Observe the supplied cancellation token during blocking operations.
-
-Preparation uses `run(..., exception=True)`. Test execution keeps the default
-`exception=False`, because pytest exit code 1 contains ordinary test failures
-and valid reports. The runner preserves a single scope for installation,
-preparation, pytest, and subsequent coverage export. Backend exceptions retain
-their cause chain and available command results in the final diagnostic.
