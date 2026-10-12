@@ -67,6 +67,26 @@ Throngtest is a pytest plugin based on the Throng system. To understand why it's
 
 Throng allows you to execute arbitrary terminal commands in various execution environments (referred to as “isolates” in Throng terminology) that are connected as plugins. The core code that issues commands to the execution environments “knows” nothing about how a specific environment is actually structured, which makes it easy to swap them out without modifying that code. Your code can easily run on your computer, making the most of its processing power, and when you need more—you can simply connect a plugin that will allow you to run the same logic within a computing cluster or a network of multiple computers. 
 
+Throngtest, being based on Throng, allows you to use any Throng-compatible plugins to execute your code. Simply install the appropriate plugin or use one of the built-in ones, and your tests will run on the appropriate infrastructure.
+
+The basic workflow of throngtest looks like this:
+
+- First, you need to integrate with pytest as an intermediate execution layer, receiving a list of tests from pytest and returning a list of execution results to pytest. Pytest provides the appropriate entry points for this.
+- Next, you need to create a “snapshot” of your environment’s state, which typically includes a set of your project’s source code files, so that you can use it to create isolated execution environments (isolates) in which commands can then be executed independently.
+- Next, based on the snapshot, you need to create n independent “isolates,” that is, the final executors of your tests. The throngtest logic does not know what a specific isolate is; instead, it relies on the currently connected and selected plugin, which provides throngtest with a basic API for interacting with it.
+- Each isolate receives an independent test execution command that specifies which subset of tests the particular isolate should run.
+- Tests in each isolate are executed independently and then aggregated at the throngtest level, after which they are provided to pytest in such a way that pytest has absolutely no idea how they were obtained.
+
+You can set the number of isolates to which the work is distributed in the settings; the default value is 4. You can also use the settings to control which plugin you authorize to actually execute your commands.
+
+The built-in plugin, which is enabled by default and where your commands are typically executed, is called `temporary_directory`. It’s quite simple:
+
+- Commands are actually executed on the same computer from which you run the `pytest` command.
+- Each isolate is essentially a temporary directory where all your code is copied from the main directory; the test commands are run there, and then the temporary directory is deleted.
+
+The overhead associated with distributing work is usually not zero. As a rule, each plugin: reads the state of your system and working directory, packaging all of this into a special byte artifact; then prepares the resources on which the test command will actually be executed—for example, by creating virtual machine instances on remote computers; and then additional time is spent passing both the byte artifact and subsequent commands to the system responsible for the actual execution of the command. Throng logically isolates all these stages from the control code, but it does not eliminate the overhead associated with distributed code execution if that is required by a specific plugin. What does this mean for us?
+
+
 
 
 
