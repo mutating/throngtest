@@ -65,7 +65,7 @@ This test run took place entirely on your computer, but the tests themselves wer
 
 `throngtest` is a pytest plugin based on the [`throng`](https://github.com/mutating/throng) system. To understand why it's cool, you need to understand why `throng` is cool.
 
-Throng allows you to execute arbitrary terminal commands in various execution environments (referred to as “isolates” in `throng` terminology) that are connected as plugins. The core code that issues commands to the execution environments “knows” nothing about how a specific environment is actually structured, which makes it easy to swap them out without modifying that code. Your code can easily run on your computer, making the most of its processing power, and when you need more—you can simply connect a plugin that will allow you to run the same logic within a computing cluster or a network of multiple computers. 
+`throng` allows you to execute arbitrary terminal commands in various execution environments (referred to as “isolates” in `throng` terminology) that are connected as plugins. The core code that issues commands to the execution environments “knows” nothing about how a specific environment is actually structured, which makes it easy to swap them out without modifying that code. Your code can easily run on your computer, making the most of its processing power, and when you need more—you can simply connect a plugin that will allow you to run the same logic within a computing cluster or a network of multiple computers. 
 
 `throngtest`, being based on `throng`, allows you to use any `throng`-compatible plugins to execute your code. Simply install the appropriate plugin or use one of the built-in ones, and your tests will run on the appropriate infrastructure.
 
