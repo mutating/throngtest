@@ -75,6 +75,16 @@ There are several important settings that you can configure when running throngt
 | `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
 | `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
+As you can see, `throngtest` has default settings. You can run the `pytest` command without any additional arguments, like this:
+
+```bash
+pytest
+```
+
+... and in that case, the default settings will be applied automatically.
+
+
+
 
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
 Throngtest is an independent pytest plugin: it has its own options and does not
