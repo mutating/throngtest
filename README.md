@@ -97,7 +97,7 @@ Here's an example of what overriding parameters via the CLI might look like:
 pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
 ```
 
-> ↑ Please note that all parameters that require the specification of collections must be specified in [`JSON`](https://en.wikipedia.org/wiki/JSON) format.
+> ↑ Please note that all parameters that require specifying collections must be specified in [`JSON`](https://en.wikipedia.org/wiki/JSON) format. This applies only to CLI parameters and environment variables. In configuration files, you can use collections in the native format of the specific file.
 
 And here's an example of a section in `pyproject.toml` where some parameters are overridden:
 
