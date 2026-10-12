@@ -69,7 +69,7 @@ This test run took place entirely on your computer, but the tests themselves wer
 
 `throngtest`, being based on `throng`, allows you to use any `throng`-compatible plugins to execute your code. Simply install the appropriate plugin or use one of the built-in ones, and your tests will run on the appropriate infrastructure.
 
-The basic workflow of throngtest looks like this:
+The basic workflow of `throngtest` looks like this:
 
 - First, you need to integrate with `pytest` as an intermediate execution layer, receiving a list of tests from `pytest` and returning a list of execution results to `pytest`. Pytest provides the appropriate entry points for this.
 - Next, you need to create a “snapshot” of your environment’s state, which typically includes a set of your project’s source code files, so that you can use it to create isolated execution environments (isolates) in which commands can then be executed independently.
