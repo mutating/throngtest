@@ -75,7 +75,7 @@ The basic workflow of `throngtest` looks like this:
 - Next, you need to create a “snapshot” of your environment’s state, which typically includes a set of your project’s source code files, so that you can use it to create isolated execution environments (isolates) in which commands can then be executed independently.
 - Next, based on the snapshot, you need to create n independent “isolates,” that is, the final executors of your tests. The `throngtest` logic does not know what a specific isolate is; instead, it relies on the currently connected and selected plugin, which provides `throngtest` with a basic API for interacting with it.
 - Each isolate receives an independent test execution command that specifies which subset of tests the particular isolate should run.
-- Tests in each isolate are executed independently and then aggregated at the throngtest level, after which they are provided to pytest in such a way that pytest has absolutely no idea how they were obtained.
+- Tests in each isolate are executed independently and then aggregated at the `throngtest` level, after which they are provided to `pytest` in such a way that `pytest` has absolutely no idea how they were obtained.
 
 You can set the number of isolates to which the work is distributed in the settings; the default value is `4`. You can also use the settings to control which plugin you authorize to actually execute your commands.
 
