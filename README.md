@@ -71,7 +71,8 @@ There are several important settings that you can configure when running throngt
 | `backend` | `--backend` | `temporary_directory` | Name of an installed throng plugin. |
 | `distribution` | `--distribution` | `tests` | Split individual tests or keep each file together (`files`). |
 | `python` | `--python` | Controller's `sys.executable` | Python executable available inside each isolate. |
-| `exclude` | `--exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
+| `exclude` | `--exclude` | `.git/`, `.venv/`, `venv/`, `__pycache__/`,
+`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, and `dist/` | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
 | `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
 | `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
