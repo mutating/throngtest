@@ -63,6 +63,10 @@ This test run took place entirely on your computer, but the tests themselves wer
 
 ## How it works?
 
+Throngtest is a pytest plugin based on the Throng system. To understand why it's cool, you need to understand why Throng is cool.
+
+Throng allows you to execute arbitrary terminal commands in various execution environments (referred to as “isolates” in Throng terminology) that are connected as plugins. The core code that issues commands to the execution environments is “agnostic” to the specific implementation of any given environment, making it easy to swap them out without modifying that code.
+
 
 ## Configuration
 
