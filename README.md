@@ -112,66 +112,6 @@ preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
 ```
 
 
-## Isolate preparation
-
-Use `packages` to ask the backend to install dependencies before running
-preparation commands and collecting tests inside each isolate:
-
-```bash
-pytest --packages='["requests"]'
-THRONGTEST_PACKAGES='["requests"]' pytest
-```
-
-The equivalent TOML setting is `packages = ["requests"]` in
-`[tool.throngtest]`. Each isolate receives the complete list once, in order.
-An explicit list replaces the lower-priority list; `[]` disables installation.
-No installation runs with `isolates = 0`, `--collect-only`, or an empty test
-selection. The controller must already have the dependencies needed for its
-initial collection; packages are installed only in the isolates.
-
-Package syntax and the installation environment belong to the selected backend.
-The built-in backends run `pip install <specification>` using `pip` from `PATH`;
-`--python` selects the test interpreter and does **not** select that installer.
-These backends share the existing Python environment, so installation may
-modify it, and temporary-directory cleanup does not uninstall packages.
-To install into a specific interpreter, use an explicit preparation command
-such as `path/to/python -m pip install requests` and select that interpreter
-with `--python`. Successful installer output is managed by the backend;
-installation failures include available return codes, stdout, and stderr in
-the diagnostic, stop that isolate's preparation, and trigger cleanup and
-cancellation of outstanding work.
-
-Use `preparation` to generate files, install dependencies, or otherwise prepare
-each isolate before its pytest process starts:
-
-```bash
-pytest --preparation='["python scripts/prepare.py"]'
-THRONGTEST_PREPARATION='["python scripts/prepare.py"]' pytest
-```
-
-Commands run after package installation, in the listed order through
-`isolate.run`, in the same isolate as the tests. With the built-in backends
-they start at the project root, even when
-pytest is invoked from a subdirectory. Each call starts a separate process:
-file changes persist, but `cd`, `export`, and shell activation do not carry over
-to later commands or pytest. To select a prepared interpreter, set `python` to
-its executable path. Command syntax follows the chosen throng backend.
-
-A failed command or a nonzero/missing exit code stops preparation of that
-isolate and prevents its tests from starting. The controller cancels outstanding work, cleans up the
-isolates, and exits with code 3, reporting the failed command, its exit code,
-and preparation output. Other isolates may already have started their tests.
-Successful preparation output is forwarded with the isolate's test results.
-Throngtest retains individual command results to preserve this output; it does
-not forward its `preparation` setting to the manager's `prepare` parameter,
-which discards successful command results.
-
-An explicit list replaces the lower-priority list; `[]` disables preparation.
-No preparation runs with `isolates = 0`, `--collect-only`, or an empty test
-selection. The controller collects tests before creating isolates, so its
-environment must already support that initial collection. Preparation runs
-before collection inside each worker, not before controller collection.
-
 ## Coverage
 
 Throngtest includes two coverage agents, for `coverage run -m pytest` and
