@@ -71,9 +71,9 @@ This test run took place entirely on your computer, but the tests themselves wer
 
 The basic workflow of `throngtest` looks like this:
 
-- First, you need to integrate with `pytest` as an intermediate execution layer, receiving a list of tests from `pytest` and returning a list of execution results to `pytest`. Pytest provides the appropriate entry points for this.
+- First, you need to integrate with `pytest` as an intermediate execution layer, receiving a list of tests from `pytest` and returning a list of execution results to `pytest`. `pytest` provides the appropriate entry points for this.
 - Next, you need to create a “snapshot” of your environment’s state, which typically includes a set of your project’s source code files, so that you can use it to create isolated execution environments (isolates) in which commands can then be executed independently.
-- Next, based on the snapshot, you need to create n independent “isolates,” that is, the final executors of your tests. The throngtest logic does not know what a specific isolate is; instead, it relies on the currently connected and selected plugin, which provides throngtest with a basic API for interacting with it.
+- Next, based on the snapshot, you need to create n independent “isolates,” that is, the final executors of your tests. The `throngtest` logic does not know what a specific isolate is; instead, it relies on the currently connected and selected plugin, which provides `throngtest` with a basic API for interacting with it.
 - Each isolate receives an independent test execution command that specifies which subset of tests the particular isolate should run.
 - Tests in each isolate are executed independently and then aggregated at the throngtest level, after which they are provided to pytest in such a way that pytest has absolutely no idea how they were obtained.
 
