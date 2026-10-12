@@ -112,59 +112,6 @@ packages = []
 preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
 ```
 
-Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
-Throngtest is an independent pytest plugin: it has its own options and does not
-depend on pytest-xdist or implement xdist's flags or fixtures.
-
-```bash
-pip install throngtest
-pytest
-pytest --distribution=files
-pytest --isolates=2 --backend=local
-```
-
-Installing the plugin enables distribution into up to four isolates by default.
-Use `--isolates=0` to disable it and run ordinary pytest.
-Python 3.8+ and pytest 7.0.0+ are supported. Pluggy 1.2.0+ and throng 0.0.9+ are required.
-
--------------------------
-
-All throngtest settings are loaded, converted and validated through
-[skelet](https://github.com/mutating/skelet). Sources have this precedence:
-
-1. Explicit CLI options listed below, including arguments supplied by pytest's
-   `addopts` or `PYTEST_ADDOPTS`.
-2. Environment variables with the `THRONGTEST_` prefix.
-3. `[tool.throngtest]` in `pyproject.toml` at pytest's `rootdir`.
-4. Defaults.
-
-```toml
-[tool.throngtest]
-isolates = 4
-check_fingerprints = false
-backend = "temporary_directory"
-distribution = "files"
-packages = []
-preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
-```
-
-```bash
-THRONGTEST_ISOLATES=4 pytest
-pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
-```
-
-
-The default exclusions are `.git/`, `.venv/`, `venv/`, `__pycache__/`,
-`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, and `dist/`.
-An explicit exclusion list replaces the defaults. Patterns are interpreted by
-throng. Configurations are read afresh for each pytest session.
-
-Fingerprint checks are disabled by default. Enable them with
-`--check-fingerprints`, `THRONGTEST_CHECK_FINGERPRINTS=true`, or
-`check_fingerprints = true` in `[tool.throngtest]`. Use
-`--no-check-fingerprints` to override an enabled setting from the
-environment or TOML. Both CLI flags take no value; if both are supplied, the
-last flag wins. The environment accepts `true`/`false`; TOML uses booleans.
 
 ## Isolate preparation
 
