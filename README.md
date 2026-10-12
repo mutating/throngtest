@@ -62,8 +62,18 @@ This test run took place entirely on your computer, but the tests themselves wer
 
 ## Configuration
 
+There are several important settings that you can configure when running throngtest, if necessary:
 
-
+| Setting | CLI option | Default | Meaning |
+| --- | --- | --- | --- |
+| `isolates` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
+| `check_fingerprints` | `--check-fingerprints` | `false` | Require identical ordered collections in the controller and isolates. |
+| `backend` | `--backend` | `temporary_directory` | Name of an installed throng plugin. |
+| `distribution` | `--distribution` | `tests` | Split individual tests or keep each file together (`files`). |
+| `python` | `--python` | Controller's `sys.executable` | Python executable available inside each isolate. |
+| `exclude` | `--exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
+| `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
+| `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
 
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
@@ -107,16 +117,6 @@ THRONGTEST_ISOLATES=4 pytest
 pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
 ```
 
-| Setting | CLI option | Default | Meaning |
-| --- | --- | --- | --- |
-| `isolates` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
-| `check_fingerprints` | `--check-fingerprints` | `false` | Require identical ordered collections in the controller and isolates. |
-| `backend` | `--backend` | `temporary_directory` | Name of an installed throng plugin. |
-| `distribution` | `--distribution` | `tests` | Split individual tests or keep each file together (`files`). |
-| `python` | `--python` | Controller's `sys.executable` | Python executable available inside each isolate. |
-| `exclude` | `--exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
-| `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
-| `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
 The default exclusions are `.git/`, `.venv/`, `venv/`, `__pycache__/`,
 `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, and `dist/`.
