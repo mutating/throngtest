@@ -83,8 +83,33 @@ pytest
 
 ... and in that case, the default settings will be applied automatically.
 
+There are several ways to override the default settings:
 
+- Using CLI options.
+- Using environment variables, which are written in uppercase with the prefix `THRONGTEST_`.
+- By adding parameters to the `[tool.throngtest]` section of the `pyproject.toml` file, located in the project's root directory.
 
+If you set a single parameter in multiple ways, the priority order is as follows: CLI options have the highest priority, followed by environment variables, and then configuration files.
+
+Here's an example of what overriding parameters via the CLI might look like:
+
+```bash
+pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
+```
+
+> ↑ Please note that all parameters that require the specification of collections must be specified in [`JSON`](https://en.wikipedia.org/wiki/JSON) format.
+
+And here's an example of a section in `pyproject.toml` where some parameters are overridden:
+
+```toml
+[tool.throngtest]
+isolates = 4
+check_fingerprints = false
+backend = "temporary_directory"
+distribution = "files"
+packages = []
+preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
+```
 
 Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
 Throngtest is an independent pytest plugin: it has its own options and does not
