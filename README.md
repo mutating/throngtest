@@ -36,13 +36,13 @@ The key feature is that tests can be run in a distributed and isolated manner on
 Simply install [`throngtest`](https://pypi.org/project/throngtest) using the following command:
 
 ```bash
-$ pip install throngtest
+pip install throngtest
 ```
 
 Now `throngtest` will be used automatically whenever you run `pytest`. You don't need to enable anything else; just type the command `pytest` into the console, and you'll see that the test was run using throngtest:
 
 ```console
-$ pytest
+pytest
 ============================= test session starts ==============================
 platform darwin -- Python 3.14.3, pytest-9.1.1, pluggy-1.6.0
 rootdir: /Users/pomponchik/Desktop/Projects/pytest-throng/test-project
