@@ -28,6 +28,7 @@ The key feature is that tests can be run in a distributed and isolated manner on
 ## Table of contents
 
 - [**Quick start**](#quick-start)
+- [**How it works?**](#how-it-works)
 - [**Configuration**](#configuration)
 
 
@@ -58,6 +59,9 @@ tests/test_calculator.py ......                                          [100%]
 ```
 
 This test run took place entirely on your computer, but the tests themselves were executed in parallel across several temporary copies of the directory in which the original `pytest` command was run. However, the extent of the parallelism and the actual number of worker processes depend on the settings, which you can read about below.
+
+
+## How it works?
 
 
 ## Configuration
