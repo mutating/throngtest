@@ -57,7 +57,7 @@ def test_failure_cancels_every_lifecycle_phase(pytester: pytest.Pytester, monkey
             return SimpleRunResult(True, 0)
 
         def install(self, *packages: str, token: AbstractToken = DefaultToken()) -> None:  # noqa: B008
-            assert packages == ('dependency',)
+            assert packages == ('pytest', 'throngtest', 'dependency')
             calls.append(('installation', self.number, token))
             if self.number == 1 and phase == 'installation':
                 wait_for_cancellation(token)
@@ -86,7 +86,7 @@ def test_failure_cancels_every_lifecycle_phase(pytester: pytest.Pytester, monkey
     config.stash[ARGUMENTS] = []
     session = pytest.Session.from_config(config)
     session.items = [cast(pytest.Item, SimpleNamespace(nodeid=f'test.py::test_{index}')) for index in range(2)]
-    manager = Manager(config.rootpath, prepare=['native setup'], packages=['dependency'])
+    manager = Manager(config.rootpath, prepare=['native setup'], packages=['pytest', 'throngtest', 'dependency'])
 
     def factory(path: Path, exclude: List[str], packages: List[str]) -> dict:
         assert path == config.rootpath
@@ -103,6 +103,7 @@ def test_failure_cancels_every_lifecycle_phase(pytester: pytest.Pytester, monkey
     settings.preparation = ['project setup']
     with pytest.raises(KeyboardInterrupt if interrupt else pytest.exit.Exception) as caught:
         Runner(settings).pytest_runtestloop(session)
+    assert settings.packages == ['dependency']
     if not interrupt:
         assert 'primary failure' in str(caught.value)
         assert isinstance(caught.value, pytest.exit.Exception)

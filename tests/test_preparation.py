@@ -88,10 +88,11 @@ def test_prepared(index):
     expected_class = 'LocalIsolate' if backend == 'local' else 'TemporaryDirectoryIsolate'
     for trace in traces:
         calls = [json.loads(line) for line in trace if 'throngtest.coverage_transport import export' not in line]
-        assert len(calls) == 3
-        assert [call[0] for call in calls] == [expected_class] * 3
-        assert [call[1] for call in calls[:2]] == commands
-        assert 'from throngtest.worker import main' in calls[2][1]
+        assert len(calls) == 5
+        assert [call[0] for call in calls] == [expected_class] * 5
+        assert [call[1] for call in calls[:2]] == ['pip install pytest', 'pip install throngtest']
+        assert [call[1] for call in calls[2:4]] == commands
+        assert 'from throngtest.worker import main' in calls[4][1]
     assert (pytester.path / 'second marker').exists() == (backend == 'local')
 
 

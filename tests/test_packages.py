@@ -66,8 +66,9 @@ def package_trace(pytester: pytest.Pytester, tmp_path: Path) -> Path:
                     failure = observer / 'fail'
                     if failure.exists() and failure.read_text() == package:
                         return SimpleRunResult(False, 17, 'installer stdout', 'installer stderr')
-                    module = package.split('==')[0]
-                    (self.path / (module + '.py')).write_text('VALUE = 42\\n')
+                    if package not in ('pytest', 'throngtest'):
+                        module = package.split('==')[0]
+                        (self.path / (module + '.py')).write_text('VALUE = 42\\n')
                     return SimpleRunResult(True, 0)
                 return original_run(self, command, token=token)
 
@@ -97,7 +98,7 @@ def package_trace(pytester: pytest.Pytester, tmp_path: Path) -> Path:
 @pytest.mark.parametrize('source', ['cli', 'cli_separate', 'environment', 'toml'])
 @pytest.mark.parametrize('backend', ['local', 'temporary_directory', 'custom'])
 def test_packages_precede_preparation_and_tests(pytester: pytest.Pytester, backend: str, package_trace: Path, monkeypatch: pytest.MonkeyPatch, source: str) -> None:
-    """Install the configured list once in every isolate, before preparation and collection.
+    """Install the runtime and configured list once per isolate, before preparation.
 
     Invoking from a subdirectory checks that installation still uses the root.
     The controller collects without the new modules; preparation imports both,
@@ -141,18 +142,20 @@ def test_installed(number):
     for trace in traces:
         assert trace[0][0] == 'get'
         assert trace[1][0] == 'install'
-        assert trace[1][2] == packages
+        installed = ['pytest', 'throngtest', *packages]
+        assert trace[1][2] == installed
         commands = [row[2] for row in trace if row[0] == 'run' and 'throngtest.coverage_transport import export' not in row[2]]
-        assert commands[:3] == ['pip install ' + package for package in packages] + [preparation]
-        assert len(commands) == 4
-        assert 'from throngtest.worker import main' in commands[3]
+        assert commands[:-1] == ['pip install ' + package for package in installed] + [preparation]
+        assert len(commands) == 6
+        assert 'from throngtest.worker import main' in commands[-1]
         assert trace[-1][0] == 'kill'
         assert Path(trace[0][1]).exists() == (backend == 'local')
 
 
-def test_installation_failure_stops_preparation_and_reports_output(pytester: pytest.Pytester, backend: str, package_trace: Path) -> None:
+@pytest.mark.parametrize('failed_package', ['pytest', 'throngtest', 'broken==1.0'])
+def test_installation_failure_stops_preparation_and_reports_output(pytester: pytest.Pytester, backend: str, package_trace: Path, failed_package: str) -> None:
     """Expose the failing installer result and clean up without starting later work."""
-    (package_trace / 'fail').write_text('broken==1.0')
+    (package_trace / 'fail').write_text(failed_package)
     pytester.makepyfile('def test_never(): assert False')
     packages = ['dependency_a==1.0', 'broken==1.0', 'must_not_install']
     result = pytester.runpytest_subprocess(
@@ -162,10 +165,11 @@ def test_installation_failure_stops_preparation_and_reports_output(pytester: pyt
     assert result.ret == pytest.ExitCode.INTERNAL_ERROR
     output = result.stdout.str() + result.stderr.str()
     assert f'isolate 1 (backend={backend}): installing packages failed' in output
-    for detail in ('broken==1.0', 'InterruptedInstallationError', 'CannotInstallDependencyError', 'command return code: 17', 'installer stdout', 'installer stderr'):
+    for detail in (failed_package, 'InterruptedInstallationError', 'CannotInstallDependencyError', 'command return code: 17', 'installer stdout', 'installer stderr'):
         assert detail in output
     trace = list(map(json.loads, next(package_trace.glob('*.jsonl')).read_text().splitlines()))
-    assert [row[2] for row in trace if row[0] == 'run'] == ['pip install dependency_a==1.0', 'pip install broken==1.0']
+    installed = ['pytest', 'throngtest', *packages]
+    assert [row[2] for row in trace if row[0] == 'run'] == ['pip install ' + package for package in installed[:installed.index(failed_package) + 1]]
     assert trace[-1][0] == 'kill'
     assert Path(trace[0][1]).exists() == (backend == 'local')
 
@@ -180,8 +184,8 @@ def test_packages_are_not_installed_without_isolates(pytester: pytest.Pytester, 
 
 
 @pytest.mark.parametrize('empty_override', [False, True])
-def test_empty_packages_skip_installation(pytester: pytest.Pytester, backend: str, package_trace: Path, empty_override: bool) -> None:
-    """Both the default and an explicit empty override bypass installation."""
+def test_empty_packages_still_install_runtime(pytester: pytest.Pytester, backend: str, package_trace: Path, empty_override: bool) -> None:
+    """Install pytest and throngtest with default or explicitly empty packages."""
     pytester.makepyfile('def test_ok(): pass')
     arguments = []
     if empty_override:
@@ -190,7 +194,11 @@ def test_empty_packages_skip_installation(pytester: pytest.Pytester, backend: st
     result = pytester.runpytest_subprocess('--isolates=1', f'--backend={backend}', *arguments, timeout=30)
     result.assert_outcomes(passed=1)
     trace = list(map(json.loads, next(package_trace.glob('*.jsonl')).read_text().splitlines()))
-    assert 'install' not in [row[0] for row in trace]
+    assert trace[1][0] == 'install'
+    assert trace[1][2] == ['pytest', 'throngtest']
+    commands = [row[2] for row in trace if row[0] == 'run' and 'throngtest.coverage_transport import export' not in row[2]]
+    assert commands[:-1] == ['pip install pytest', 'pip install throngtest']
+    assert 'from throngtest.worker import main' in commands[-1]
 
 
 def test_installed_dependencies_do_not_turn_test_failures_into_backend_errors(pytester: pytest.Pytester, backend: str, package_trace: Path) -> None:

@@ -317,7 +317,7 @@ class Runner:
         completed = 0
         token = SimpleToken()
         try:
-            managers = throng(root, exclude=self.settings.exclude, packages=self.settings.packages)
+            managers = throng(root, exclude=self.settings.exclude, packages=['pytest', 'throngtest', *self.settings.packages])
             if self.settings.backend not in managers:
                 raise pytest.UsageError(f'throngtest: unknown backend {self.settings.backend!r}; available: {", ".join(sorted(managers))}')
             manager = managers[self.settings.backend]
