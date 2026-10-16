@@ -4,20 +4,20 @@ from throngtest.distribution import collection_difference, fingerprint, partitio
 
 
 @pytest.mark.parametrize('mode', ['tests', 'files'])
-@pytest.mark.parametrize('workers', [1, 2, 3, 20])
-def test_partition_is_complete_and_disjoint(mode: str, workers: int) -> None:
+@pytest.mark.parametrize('isolates', [1, 2, 3, 20])
+def test_partition_is_complete_and_disjoint(mode: str, isolates: int) -> None:
     """Assign every collected occurrence exactly once with stable ordering.
 
     Repeated node IDs must remain distinct by collection index. Requesting more
-    workers than items also checks that partitioning never creates empty shards.
+    isolates than items also checks that partitioning never creates empty shards.
     """
     nodes = ['a.py::one', 'a.py::two', 'b.py::three', 'c.py::four', 'a.py::two']
-    shards = partition(nodes, workers, mode)
+    shards = partition(nodes, isolates, mode)
     assert sorted(index for shard in shards for index in shard) == list(range(len(nodes)))
     assert all(shard == sorted(shard) for shard in shards)
     assert all(shards)
-    assert len(shards) <= workers
-    assert shards == partition(nodes, workers, mode)
+    assert len(shards) <= isolates
+    assert shards == partition(nodes, isolates, mode)
     if mode == 'files':
         assert any(all(index in shard for index in (0, 1, 4)) for shard in shards)
 
@@ -29,11 +29,11 @@ def test_balanced_partitions() -> None:
     assert partition([], 3, 'tests') == []
 
 
-@pytest.mark.parametrize(('workers', 'mode', 'message'), [(0, 'tests', 'positive'), (-1, 'files', 'positive'), (1, 'bad', 'distribution')])
-def test_invalid_partition(workers: int, mode: str, message: str) -> None:
-    """Reject nonpositive worker counts and unknown distribution modes."""
+@pytest.mark.parametrize(('isolates', 'mode', 'message'), [(0, 'tests', 'positive'), (-1, 'files', 'positive'), (1, 'bad', 'distribution')])
+def test_invalid_partition(isolates: int, mode: str, message: str) -> None:
+    """Reject nonpositive isolate counts and unknown distribution modes."""
     with pytest.raises(ValueError, match=message):
-        partition(['a'], workers, mode)
+        partition(['a'], isolates, mode)
 
 
 def test_fingerprint_includes_order_duplicates_and_boundaries() -> None:

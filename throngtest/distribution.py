@@ -1,4 +1,4 @@
-"""Deterministic partitions, shared by the controller and the workers."""
+"""Deterministic partitions, shared by the controller and the isolates."""
 
 from difflib import unified_diff
 from hashlib import sha256
@@ -39,16 +39,16 @@ def collection_difference(expected: Sequence[str], actual: Sequence[str]) -> str
     ])
 
 
-def partition(nodeids: Sequence[str], workers: int, mode: str) -> List[List[int]]:
-    if workers < 1:
-        raise ValueError('workers must be positive')
+def partition(nodeids: Sequence[str], isolates: int, mode: str) -> List[List[int]]:
+    if isolates < 1:
+        raise ValueError('isolates must be positive')
     if mode not in ('tests', 'files'):
         raise ValueError('distribution must be tests or files')
     groups: Dict[str, List[int]] = {}
     for index, nodeid in enumerate(nodeids):
         key = nodeid.split('::', 1)[0] if mode == 'files' else str(index)
         groups.setdefault(key, []).append(index)
-    shards: List[List[int]] = [[] for _ in range(min(workers, len(groups)))]
+    shards: List[List[int]] = [[] for _ in range(min(isolates, len(groups)))]
     for group in sorted(groups.values(), key=len, reverse=True):
         min(shards, key=len).extend(group)
     return [sorted(shard) for shard in shards]

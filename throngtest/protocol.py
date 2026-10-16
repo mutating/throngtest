@@ -29,7 +29,7 @@ def decode(value: str) -> Dict[str, object]:
 class Request:
     arguments: List[str]
     fingerprint: Optional[str]
-    workers: int
+    isolates: int
     distribution: str
     shard: int
     marker: str

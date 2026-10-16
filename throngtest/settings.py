@@ -18,7 +18,7 @@ class PytestSource(FixedCLISource[object]):
     """Use pytest's argument discovery with skelet's typed CLI conversion."""
 
     def __init__(self, config: pytest.Config) -> None:
-        super().__init__(named_arguments=['workers', 'backend', 'distribution', 'python', 'exclude', 'preparation'])
+        super().__init__(named_arguments=['isolates', 'backend', 'distribution', 'python', 'exclude', 'preparation', 'packages'])
         self.config = config
 
     def __getitem__(self, key: str) -> str:
@@ -40,18 +40,15 @@ def distribution(value: str) -> bool:
     return value in ('tests', 'files')
 
 
-def commands(value: List[str]) -> bool:
-    return all(nonempty(command) for command in value)
-
-
 class Settings(Storage):
-    workers: int = Field(4, validation={'workers must be nonnegative': nonnegative})
+    isolates: int = Field(4, validation={'isolates must be nonnegative': nonnegative})
     check_fingerprints: bool = Field(False)
     backend: str = Field('temporary_directory', validation={'backend must not be empty': nonempty})
     distribution: str = Field('tests', validation={'distribution must be tests or files': distribution})
     python: str = Field(default_factory=lambda: sys.executable, validation={'python must not be empty': nonempty})
-    exclude: List[str] = Field(default_factory=lambda: ['.git/', '.venv/', 'venv/', '__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/', 'build/', 'dist/', 'mutants/'])
-    preparation: List[str] = Field(default_factory=list, validation={'preparation commands must not be empty': commands})
+    exclude: List[str] = Field(default_factory=lambda: ['.git/', '.venv/', 'venv/', '__pycache__/', '.pytest_cache/', '.mypy_cache/', '.ruff_cache/', 'build/', 'dist/'])
+    preparation: List[str] = Field(default_factory=list, validation={'preparation commands must not be empty': lambda value: all(nonempty(item) for item in value)})
+    packages: List[str] = Field(default_factory=list, validation={'package specifications must not be empty': lambda value: all(nonempty(item) for item in value)})
 
 
 def read_settings(config: pytest.Config) -> Settings:

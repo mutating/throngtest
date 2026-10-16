@@ -18,96 +18,132 @@
 ![logo](https://raw.githubusercontent.com/mutating/throngtest/develop/docs/assets/logo_2.svg)
 
 
-Run pytest test subsets in [throng](https://github.com/mutating/throng) isolates.
-Throngtest is an independent pytest plugin: it has its own options and does not
-depend on pytest-xdist or implement xdist's flags or fixtures.
+Are your tests taking too long to run? Are your agent workflows slowing down because the agent is simply waiting for your tests to finish? If so, you need `throngtest` — a tool for running tests in a distributed manner.
+
+The key feature is that tests can be run in a distributed and isolated manner on a wide variety of infrastructure — ranging from your own PC to a distributed network of computers or a computer cluster. The [`throng`](https://github.com/mutating/throng) technology is used for distribution, which allows different test runs to be isolated from one another and executed in parallel, hiding the specifics of a particular platform’s implementation from the control code.
+
+`throngtest` is a `pytest` plugin that creates `throng` isolates and runs sharded test-running commands within them.
+
+
+## Table of contents
+
+- [**Quick start**](#quick-start)
+- [**How it works?**](#how-it-works)
+- [**Configuration**](#configuration)
+
+
+## Quick start
+
+Simply install [`throngtest`](https://pypi.org/project/throngtest) using the following command:
 
 ```bash
 pip install throngtest
-pytest
-pytest --distribution=files
-pytest --isolates=2 --backend=local
 ```
 
-Installing the plugin enables distribution into up to four isolates by default.
-Use `--isolates=0` to disable it and run ordinary pytest.
-Python 3.8+ and pytest 8.3.5–9.x are supported.
+Now `throngtest` will be used automatically whenever you run `pytest`. You don't need to enable anything else; just type the command `pytest` into the console, and you'll see that the test was run using throngtest:
+
+```console
+pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/pomponchik/Desktop/Projects/pytest-throng/test-project
+configfile: pytest.ini
+testpaths: tests
+plugins: throngtest-0.0.3
+throngtest: 4 isolates, backend=temporary_directory, distribution=tests
+collected 6 items
+
+tests/test_calculator.py ......                                          [100%]
+
+============================== 6 passed in 0.37s ===============================
+```
+
+This test run took place entirely on your computer, but the tests themselves were executed in parallel across several temporary copies of the directory in which the original `pytest` command was run. However, the extent of the parallelism and the actual number of worker processes depend on the settings, which you can read about below.
+
+
+## How it works?
+
+`throngtest` is a pytest plugin based on the [`throng`](https://github.com/mutating/throng) system. To understand why it's cool, you need to understand why `throng` is cool.
+
+`throng` allows you to execute arbitrary terminal commands in various execution environments (referred to as "isolates" in `throng` terminology) that are connected as plugins. The core code that issues commands to the execution environments "knows" nothing about how a specific environment is actually structured, which makes it easy to swap them out without modifying that code. Your code can easily run on your computer, making the most of its processing power, and when you need more — you can simply connect a plugin that will allow you to run the same logic within a computing cluster or a network of multiple computers. 
+
+`throngtest`, being based on `throng`, allows you to use any `throng`-compatible plugins to execute your code. Simply install the appropriate plugin or use one of the built-in ones, and your tests will run on the appropriate infrastructure.
+
+The basic workflow of `throngtest` looks like this:
+
+- First, you need to integrate with `pytest` as an intermediate execution layer, receiving a list of tests from `pytest` and returning a list of execution results to `pytest`. `pytest` provides the appropriate entry points for this.
+- Next, you need to create a "snapshot" of your environment’s state, which typically includes a set of your project’s source code files, so that you can use it to create isolated execution environments (isolates) in which commands can then be executed independently.
+- Next, based on the snapshot, you need to create n independent "isolates", that is, the final executors of your tests. The `throngtest` logic does not know what a specific isolate is; instead, it relies on the currently connected and selected plugin, which provides `throngtest` with a basic API for interacting with it.
+- Each isolate receives an independent test execution command that specifies which subset of tests the particular isolate should run.
+- Tests in each isolate are executed independently and then aggregated at the `throngtest` level, after which they are provided to `pytest` in such a way that `pytest` has absolutely no idea how they were obtained.
+
+You can set the number of isolates to which the work is distributed in the settings; the default value is `4`. You can also use the settings to control which plugin you authorize to actually execute your commands.
+
+The built-in plugin, which is enabled by default and where your commands are typically executed, is called `temporary_directory`. It’s quite simple:
+
+- Commands are actually executed on the same computer from which you run the `pytest` command.
+- Each isolate is essentially a temporary directory where all your code is copied from the main directory; the test commands are run there, and then the temporary directory is deleted.
+
+The overhead associated with distributing work is usually not zero. As a rule, each plugin: reads the state of your system and working directory, packaging all of this into a special byte artifact; then prepares the resources on which the test command will actually be executed—for example, by creating virtual machine instances on remote computers; and then additional time is spent passing both the byte artifact and subsequent commands to the system responsible for the actual execution of the command. `throng` logically isolates all these stages from the control code, but it does not eliminate the overhead associated with distributed code execution if that is required by a specific plugin. What does this mean for us?
+
+`throngtest` [is not a magic solution](https://en.wikipedia.org/wiki/No_Silver_Bullet) for speeding up your tests. Your tests will only run faster if the benefits of parallelism outweigh the overhead. Typically, this "break-even point" occurs when your tests without parallelization take at least a few minutes to run. It’s impossible to say for certain, since both the tests and the hardware can vary, so it’s best to rely on actual measurements.
+
+For small test suites, you’ll likely be able to find more efficient parallelization tools, such as [`pytest-xdist`](https://github.com/pytest-dev/pytest-xdist). These may utilize more efficient local execution and load-balancing mechanisms. 
+
+However, in some cases, it makes sense to give preference to `throngtest` even if your tests slow down slightly "here and now". The fact is that the so-called "[Jevons paradox](https://en.wikipedia.org/wiki/Jevons_paradox)" is quite common in software development. If a resource becomes sufficiently "cheap", demand for it rises more sharply than its price falls. How does this work in the context of testing? You’ll likely write fewer tests than you could if you knew they would take a very long time to run. Fast tests don’t just save resources—they [encourage you to write more tests](https://medium.com/%40oluwasayo/youre-not-meta-build-fast-teams-with-fast-tests-20b47694db52). The strength of `throngtest` lies in the fact that, although some plugins have operational overhead, they are capable of running your tests in parallel on a very large scale, across a large number of independent computers. The system overhead in this case can be practically fixed, and the available computing power can be so great that you can write and run more tests than ever before, while still maintaining acceptable execution times. Your projects will no longer have an "upper limit" on the number of tests—beyond which each new test makes your software harder to maintain. `throngtest` was created precisely to eliminate this upper limit.
+
 
 ## Configuration
 
-All throngtest settings are loaded, converted and validated through
-[skelet](https://github.com/mutating/skelet). Sources have this precedence:
-
-1. Explicit CLI options listed below, including arguments supplied by pytest's
-   `addopts` or `PYTEST_ADDOPTS`.
-2. Environment variables with the `THRONGTEST_` prefix.
-3. `[tool.throngtest]` in `pyproject.toml` at pytest's `rootdir`.
-4. Defaults.
-
-```toml
-[tool.throngtest]
-workers = 4
-check_fingerprints = false
-backend = "temporary_directory"
-distribution = "files"
-preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
-```
-
-```bash
-THRONGTEST_WORKERS=4 pytest
-pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
-```
+There are several important settings that you can configure when running throngtest, if necessary:
 
 | Setting | CLI option | Default | Meaning |
 | --- | --- | --- | --- |
-| `workers` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
+| `isolates` | `--isolates` | `4` | Maximum number of nonempty test subsets; a nonnegative integer. `0` disables distribution. |
 | `check_fingerprints` | `--check-fingerprints` | `false` | Require identical ordered collections in the controller and isolates. |
 | `backend` | `--backend` | `temporary_directory` | Name of an installed throng plugin. |
 | `distribution` | `--distribution` | `tests` | Split individual tests or keep each file together (`files`). |
 | `python` | `--python` | Controller's `sys.executable` | Python executable available inside each isolate. |
-| `exclude` | `--exclude` | See below | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
+| `exclude` | `--exclude` | `.git/`, `.venv/`, `venv/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, and `dist/` | Throng snapshot exclusion patterns; a JSON array for CLI/environment sources and an array in TOML. |
 | `preparation` | `--preparation` | `[]` | Ordered list of nonempty commands run once in each isolate before pytest; JSON for CLI/environment sources and an array in TOML. |
+| `packages` | `--packages` | `[]` | List of nonempty package specifications installed by the backend in each isolate before preparation; JSON for CLI/environment sources and an array in TOML. |
 
-The default exclusions are `.git/`, `.venv/`, `venv/`, `__pycache__/`,
-`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `build/`, `dist/`, and `mutants/`.
-An explicit exclusion list replaces the defaults. Patterns are interpreted by
-throng. Configurations are read afresh for each pytest session.
-
-Fingerprint checks are disabled by default. Enable them with
-`--check-fingerprints`, `THRONGTEST_CHECK_FINGERPRINTS=true`, or
-`check_fingerprints = true` in `[tool.throngtest]`. Use
-`--no-check-fingerprints` to override an enabled setting from the
-environment or TOML. Both CLI flags take no value; if both are supplied, the
-last flag wins. The environment accepts `true`/`false`; TOML uses booleans.
-
-## Isolate preparation
-
-Use `preparation` to generate files, install dependencies, or otherwise prepare
-each isolate before its pytest process starts:
+As you can see, `throngtest` has default settings. You can run the `pytest` command without any additional arguments, like this:
 
 ```bash
-pytest --preparation='["python scripts/prepare.py"]'
-THRONGTEST_PREPARATION='["python scripts/prepare.py"]' pytest
+pytest
 ```
 
-Commands run in the listed order through `isolate.run`, in the same isolate as
-the tests. With the built-in backends they start at the project root, even when
-pytest is invoked from a subdirectory. Each call starts a separate process:
-file changes persist, but `cd`, `export`, and shell activation do not carry over
-to later commands or pytest. To select a prepared interpreter, set `python` to
-its executable path. Command syntax follows the chosen throng backend.
+... and in that case, the default settings will be applied automatically.
 
-A nonzero command exit code stops preparation of that isolate and prevents its
-tests from starting. The controller cancels outstanding work, cleans up the
-isolates, and exits with code 3, reporting the failed command, its exit code,
-and preparation output. Other isolates may already have started their tests.
-Successful preparation output is forwarded with the isolate's test results.
+There are several ways to override the default settings:
 
-An explicit list replaces the lower-priority list; `[]` disables preparation.
-No preparation runs with `workers = 0`, `--collect-only`, or an empty test
-selection. The controller collects tests before creating isolates, so its
-environment must already support that initial collection. Preparation runs
-before collection inside each worker, not before controller collection.
+- Using CLI options.
+- Using environment variables, which are written in uppercase with the prefix `THRONGTEST_`.
+- By adding parameters to the `[tool.throngtest]` section of the `pyproject.toml` file, located in the project's root directory.
+
+If you set a single parameter in multiple ways, the priority order is as follows: CLI options have the highest priority, followed by environment variables, and then configuration files.
+
+Here's an example of what overriding parameters via the CLI might look like:
+
+```bash
+pytest --isolates=2 --exclude='[".git/", ".venv/", "large-data/"]'
+```
+
+> ↑ Please note that all parameters that require specifying collections must be specified in [`JSON`](https://en.wikipedia.org/wiki/JSON) format. This applies only to CLI parameters and environment variables. In configuration files, you can use collections in the native format of the specific file.
+
+And here's an example of a section in `pyproject.toml` where some parameters are overridden:
+
+```toml
+[tool.throngtest]
+isolates = 4
+check_fingerprints = false
+backend = "temporary_directory"
+distribution = "files"
+packages = []
+preparation = ["python scripts/prepare.py", "python scripts/seed_test_data.py"]
+```
+
 
 ## Coverage
 
@@ -152,7 +188,7 @@ needs the agent package installed.
 ## Distribution and execution
 
 The controller collects and selects tests using pytest. It partitions the
-result into at most `workers` nonempty subsets. In `tests` mode, tests are
+result into at most `isolates` nonempty subsets. In `tests` mode, tests are
 assigned in round-robin order. In `files` mode, larger files are assigned first
 to the least populated subset, using test counts as the size estimate. Original
 collection order is preserved within each subset. Durations are not predicted
@@ -187,7 +223,7 @@ The built-in backends have different guarantees:
   for each isolate and removes it after execution. Commands in different
   isolates can run concurrently.
 * `local` executes in the original project directory. Its isolates use separate
-  command processes, but throng 0.0.3 serializes commands belonging to one local
+  command processes, but throng serializes commands belonging to one local
   manager. Project file changes are visible to other subsets and remain after
   the run.
 
@@ -243,8 +279,8 @@ Workers return JSON reports through the command's stdout. No shared report
 directory, network listener, or pickle transport is required. Third-party
 throng backends must provide stdout and a process return code. The selected
 interpreter must have throngtest, pytest, the project's dependencies, and
-required pytest plugins available by the end of preparation. Throngtest only
-installs packages when explicitly instructed through preparation commands.
+required pytest plugins available by the end of preparation. Throngtest installs
+packages only when explicitly configured through `packages` or preparation commands.
 For a remote backend, set `--python` to an interpreter available in
 the isolate, such as `python`; its default is the controller's absolute
 `sys.executable` path, which is usually absent on a remote machine.
@@ -263,10 +299,13 @@ with fingerprint checks enabled, and incomplete report payloads fail with exit c
 worker interrupt propagates exit code 2.
 
 `-x` and `--maxfail` apply within each worker and to the aggregate reports. Once
-the controller observes the limit, it cancels outstanding commands through
-throng's cancellation token and cleans up isolates. Other subsets may already
-have executed additional tests. Cancellation responsiveness depends on the
-backend; throng's isolate creation itself does not accept a cancellation token.
+the controller observes the limit, it cancels outstanding work through
+throng's cancellation token and cleans up isolates. The same token is passed
+to isolate creation, package installation, preparation, test execution, and
+coverage export. Backend errors and controller interrupts also cancel pending
+work. Other subsets may already have executed additional tests. Responsiveness
+depends on the backend: snapshot reading has no cancellation token, and a
+backend may not interrupt allocation or lock waits immediately.
 
 The plugin rejects interactive `--pdb`, cache-based selection (`--lf`, `--ff`, `--nf`), and
 `--stepwise`. Other plugins must be importable in each worker, for example via
@@ -275,26 +314,3 @@ be transported. Plugins that implement custom test protocols, reruns, or their
 own output artifacts need separate compatibility work. The built-in throng
 backends reuse the interpreter environment; temporary file copies are not
 container or virtual-environment isolation.
-
-## Development
-
-```bash
-python -m pip install -r requirements_dev.txt -e .
-python -m pytest --isolates=0
-ruff check throngtest tests
-mypy --strict --disallow-any-decorated --disallow-any-explicit \
-  --disallow-any-expr --disallow-any-generics --disallow-any-unimported \
-  --disallow-subclassing-any --warn-return-any throngtest
-mypy tests
-```
-
-The outer test session disables distribution; integration tests launch their
-own pytest sessions to exercise throngtest, including its default settings.
-The test suite includes actual subprocess runs through both built-in throng
-plugins, trace checks of their isolate APIs, complete/disjoint distribution,
-concurrency barriers, configuration precedence, preparation, native reports, cancellation,
-cleanup, and fault injection at the protocol/backend boundaries. The existing
-CI also checks statement and branch coverage across Python and OS versions.
-The CI workflow uses a startup hook to measure its own local subprocesses.
-Integration tests also verify that the coverage agents transfer data from
-temporary isolates, including when pytest-xdist runs inside them.
