@@ -201,6 +201,54 @@ def test_empty_packages_still_install_runtime(pytester: pytest.Pytester, backend
     assert 'from throngtest.worker import main' in commands[-1]
 
 
+def test_bootstrap_does_not_spawn_pip_in_other_scenarios(pytester: pytest.Pytester, backend: str) -> None:
+    """Keep four-isolate scenarios independent of installer startup time."""
+    pytester.makeconftest('''
+        import sys
+        from pathlib import Path
+
+        def reject_pip(event, arguments):
+            if event == 'subprocess.Popen':
+                command = arguments[1]
+                executable = command.split()[0] if isinstance(command, str) else command[0]
+                if Path(executable).stem == 'pip':
+                    raise AssertionError('unexpected pip subprocess in an integration scenario')
+
+        sys.addaudithook(reject_pip)
+    ''')
+    pytester.makepyfile('import pytest\n@pytest.mark.parametrize("number", range(4))\ndef test_ok(number): pass')
+    pytester.runpytest_subprocess('--isolates=4', f'--backend={backend}', timeout=30).assert_outcomes(passed=4)
+
+
+@pytest.mark.usefixtures('real_pip')
+def test_runtime_installation_with_real_pip(pytester: pytest.Pytester, backend: str, tmp_path: Path) -> None:
+    """Exercise real offline pip once per backend, with one isolate."""
+    pytester.makeconftest(f'''
+        import json
+        from pathlib import Path
+        from throng.extensions.local.isolate import LocalIsolate
+        from throng.extensions.temporary_directory.isolate import TemporaryDirectoryIsolate
+
+        def observe(cls):
+            original = cls._run
+            def run(self, command, *args, **kwargs):
+                result = original(self, command, *args, **kwargs)
+                if command in ('pip install pytest', 'pip install throngtest'):
+                    with Path({str(tmp_path / 'pip.jsonl')!r}).open('a') as stream:
+                        stream.write(json.dumps([command, result.returncode, result.stdout]) + '\\n')
+                return result
+            cls._run = run
+
+        observe(LocalIsolate)
+        observe(TemporaryDirectoryIsolate)
+    ''')
+    pytester.makepyfile('def test_ok(): pass')
+    pytester.runpytest_subprocess('--isolates=1', f'--backend={backend}', timeout=60).assert_outcomes(passed=1)
+    installations = [json.loads(line) for line in (tmp_path / 'pip.jsonl').read_text().splitlines()]
+    assert [command for command, _, _ in installations] == ['pip install pytest', 'pip install throngtest']
+    assert all(code == 0 and output for _, code, output in installations)
+
+
 def test_installed_dependencies_do_not_turn_test_failures_into_backend_errors(pytester: pytest.Pytester, backend: str, package_trace: Path) -> None:
     """Preserve pytest's exit code, reports, and cleanup after installing dependencies."""
     pytester.makepyfile('def test_failure():\n    import dependency_a\n    assert dependency_a.VALUE == 0')
